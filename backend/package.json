@@ -1,0 +1,55 @@
+{
+  "name": "ai-video-factory-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI Video Factory V3 — Backend API + Workers",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "worker:scheduler": "node src/workers/schedulerWorker.js",
+    "worker:ai": "node src/workers/aiWorker.js",
+    "worker:render": "node src/workers/renderWorker.js",
+    "worker:gpu": "node src/workers/gpuWorker.js",
+    "worker:dispatcher": "node src/services/runpodDispatcher.js",
+    "start:serverless": "node src/workers/runpodHandler.js",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1075.0",
+    "@aws-sdk/s3-request-presigner": "^3.1075.0",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.6.8",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^5.7.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.5.2",
+    "express-validator": "^7.0.1",
+    "fluent-ffmpeg": "^2.1.3",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.7.2",
+    "mongoose": "^8.3.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "openai": "^6.44.0",
+    "pdf-parse": "^1.1.1",
+    "socket.io": "^4.7.5",
+    "systeminformation": "^5.22.7",
+    "uuid": "^9.0.1",
+    "winston": "^3.13.0",
+    "runpod-sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

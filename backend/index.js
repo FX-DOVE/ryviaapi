@@ -1,0 +1,46 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+import './env.js';
+
+import { connectDB } from './src/config/db.js';
+import { registerMaintenanceCron } from './src/queues/maintenanceQueue.js';
+import { checkRedisConfig } from './src/config/redis.js';
+import eventBus from './src/services/eventBus.js';
+import server from './src/app.js';
+
+const PORT = parseInt(process.env.PORT || '3001', 10);
+
+async function start() {
+  try {
+    await connectDB();
+    console.log('[API] MongoDB connected');
+
+    await checkRedisConfig();
+    
+    // Initialize Event Bus cluster sync
+    await eventBus.init();
+
+    // Register nightly maintenance cron (idempotent)
+    await registerMaintenanceCron();
+
+    server.listen(PORT, () => {
+      console.log(`[API] Server listening on http://localhost:${PORT}`);
+      console.log(`[API] Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  } catch (err) {
+    console.error('[API] Failed to start:', err);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[API] SIGTERM — shutting down gracefully');
+  server.close(() => {
+    process.exit(0);
+  });
+});
+
+start();

@@ -1,0 +1,16 @@
+[2026-06-25 07:22:04] scene_id=scene_001 status=SUCCESS reason=Clip generated and saved successfully path=C:\Users\FXDOVE\Desktop\apivideo pipline\test_output_clips\scene_scene_001.mp4
+[2026-06-25 07:22:24] scene_id=scene_429 status=RETRY reason=Rate limited (429). Waiting 10s path=
+[2026-06-25 07:22:34] scene_id=scene_429 status=RETRY reason=Rate limited (429). Waiting 20s path=
+[2026-06-25 07:22:54] scene_id=scene_429 status=SUCCESS reason=Clip generated and saved successfully path=C:\Users\FXDOVE\Desktop\apivideo pipline\test_output_clips\scene_scene_429.mp4
+[2026-06-25 07:23:15] scene_id=scene_timeout_read status=RETRY reason=ReadTimeout. Waiting 60s then polling status path=
+[2026-06-25 07:24:45] scene_id=scene_timeout_read status=SUCCESS reason=Polled status completed successfully path=C:\Users\FXDOVE\AppData\Local\Temp\grok_scene_timeout_read.mp4
+[2026-06-25 07:25:05] scene_id=scene_fail status=FAILED reason=HTTP Error: HTTP 500 Error (Simulated) path=
+[2026-06-25 07:27:05] scene_id=scene_fail status=FAILED reason=HTTP Error: HTTP 500 Error (Simulated) path=
+[2026-06-25 09:38:08] scene_id=scene_001 status=SUCCESS reason=Clip generated and saved successfully path=C:\Users\FXDOVE\Desktop\apivideo pipline\test_output_clips\scene_scene_001.mp4
+[2026-06-25 09:38:28] scene_id=scene_429 status=RETRY reason=Rate limited (429). Waiting 10s path=
+[2026-06-25 09:38:38] scene_id=scene_429 status=RETRY reason=Rate limited (429). Waiting 20s path=
+[2026-06-25 09:38:58] scene_id=scene_429 status=SUCCESS reason=Clip generated and saved successfully path=C:\Users\FXDOVE\Desktop\apivideo pipline\test_output_clips\scene_scene_429.mp4
+[2026-06-25 09:39:19] scene_id=scene_timeout_read status=RETRY reason=ReadTimeout. Waiting 60s then polling status path=
+[2026-06-25 09:40:49] scene_id=scene_timeout_read status=SUCCESS reason=Polled status completed successfully path=C:\Users\FXDOVE\AppData\Local\Temp\grok_scene_timeout_read.mp4
+[2026-06-25 09:41:09] scene_id=scene_fail status=FAILED reason=HTTP Error: HTTP 500 Error (Simulated) path=
+[2026-06-25 09:43:09] scene_id=scene_fail status=FAILED reason=HTTP Error: HTTP 500 Error (Simulated) path=

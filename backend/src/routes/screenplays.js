@@ -1,0 +1,211 @@
+import express from 'express';
+import Screenplay from '../models/Screenplay.js';
+import FilmCharacter from '../models/FilmCharacter.js';
+import Job from '../models/Job.js';
+import { generateScreenplay, screenplayToScenes } from '../services/screenplayService.js';
+import { logInfo } from '../services/logService.js';
+
+const router = express.Router();
+
+// ── List screenplays for workspace ────────────────────────────────────────────
+router.get('/', async (req, res, next) => {
+  try {
+    const { projectId, status } = req.query;
+    const filter = { workspaceId: req.workspaceId };
+    if (projectId) filter.projectId = projectId;
+    if (status) filter.status = status;
+
+    const screenplays = await Screenplay.find(filter)
+      .select('-scenes') // omit scene data for list view (too large)
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.json({ screenplays });
+  } catch (err) { next(err); }
+});
+
+// ── Get a single screenplay (full, with scenes) ───────────────────────────────
+router.get('/:id', async (req, res, next) => {
+  try {
+    const screenplay = await Screenplay.findOne({
+      _id: req.params.id,
+      workspaceId: req.workspaceId
+    });
+    if (!screenplay) return res.status(404).json({ error: 'Screenplay not found' });
+    res.json({ screenplay });
+  } catch (err) { next(err); }
+});
+
+// ── Get scenes for a screenplay (paginated) ───────────────────────────────────
+router.get('/:id/scenes', async (req, res, next) => {
+  try {
+    const screenplay = await Screenplay.findOne({
+      _id: req.params.id,
+      workspaceId: req.workspaceId
+    }).select('scenes totalScenes title');
+
+    if (!screenplay) return res.status(404).json({ error: 'Screenplay not found' });
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const start = (page - 1) * limit;
+
+    const scenes = screenplay.scenes.slice(start, start + limit);
+    res.json({
+      scenes,
+      totalScenes: screenplay.totalScenes,
+      page,
+      totalPages: Math.ceil(screenplay.totalScenes / limit),
+    });
+  } catch (err) { next(err); }
+});
+
+// ── Generate a new screenplay from synopsis ───────────────────────────────────
+router.post('/generate', async (req, res, next) => {
+  try {
+    const {
+      title, genre, synopsis, tone, themes,
+      animationStyle, targetDurationMinutes,
+      filmCharacterIds, projectId, additionalSettings
+    } = req.body;
+
+    if (!title) return res.status(400).json({ error: 'Film title is required' });
+    if (!synopsis) return res.status(400).json({ error: 'Synopsis is required' });
+
+    console.log(`[ScreenplayRoute] Generating screenplay for "${title}"...`);
+
+    // Run generation (this takes 1-3 minutes for a full feature film)
+    const screenplay = await generateScreenplay({
+      title,
+      genre: genre || 'drama',
+      synopsis,
+      tone: tone || 'dramatic',
+      themes: themes || [],
+      animationStyle: animationStyle || 'cinematic',
+      targetDurationMinutes: parseInt(targetDurationMinutes) || 90,
+      filmCharacterIds: filmCharacterIds || [],
+      additionalSettings: additionalSettings || '',
+      workspaceId: req.workspaceId,
+      projectId: projectId || null,
+      createdBy: req.userId,
+    });
+
+    res.status(201).json({
+      screenplay: {
+        _id: screenplay._id,
+        title: screenplay.title,
+        genre: screenplay.genre,
+        totalScenes: screenplay.totalScenes,
+        totalChapters: screenplay.totalChapters,
+        status: screenplay.status,
+        acts: screenplay.acts,
+        characters: screenplay.characters,
+        storyBible: screenplay.storyBible,
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+// ── Update a scene in a screenplay (manual edit) ─────────────────────────────
+router.patch('/:id/scenes/:sceneNumber', async (req, res, next) => {
+  try {
+    const screenplay = await Screenplay.findOne({
+      _id: req.params.id,
+      workspaceId: req.workspaceId
+    });
+    if (!screenplay) return res.status(404).json({ error: 'Screenplay not found' });
+
+    const sceneIndex = screenplay.scenes.findIndex(
+      s => s.sceneNumber === parseInt(req.params.sceneNumber)
+    );
+    if (sceneIndex === -1) return res.status(404).json({ error: 'Scene not found' });
+
+    const allowed = ['narration', 'dialogue', 'actionType', 'actionDescription', 'location',
+                     'emotion', 'intensity', 'cameraType', 'transitionOut', 'characterNames'];
+    for (const field of allowed) {
+      if (req.body[field] !== undefined) {
+        screenplay.scenes[sceneIndex][field] = req.body[field];
+      }
+    }
+
+    screenplay.markModified('scenes');
+    await screenplay.save();
+    res.json({ scene: screenplay.scenes[sceneIndex] });
+  } catch (err) { next(err); }
+});
+
+// ── Start production from a screenplay (creates a Job) ───────────────────────
+router.post('/:id/produce', async (req, res, next) => {
+  try {
+    const screenplay = await Screenplay.findOne({
+      _id: req.params.id,
+      workspaceId: req.workspaceId
+    });
+    if (!screenplay) return res.status(404).json({ error: 'Screenplay not found' });
+    if (screenplay.status !== 'ready') {
+      return res.status(400).json({ error: `Screenplay is not ready (status: ${screenplay.status})` });
+    }
+
+    // Create the production Job
+    const job = new Job({
+      userId: req.userId,
+      workspaceId: req.workspaceId,
+      projectId: screenplay.projectId,
+      title: screenplay.title,
+      inputMode: 'film_mode',
+      filmMode: true,
+      screenplayId: screenplay._id,
+      animationStyle: screenplay.animationStyle,
+      genre: screenplay.genre,
+      targetDurationMinutes: screenplay.targetDurationMinutes,
+      totalScenes: screenplay.totalScenes,
+      totalChapters: screenplay.totalChapters,
+      filmCharacterIds: screenplay.characters
+        .filter(c => c.filmCharacterId)
+        .map(c => c.filmCharacterId),
+      styleConfig: {
+        preset: screenplay.animationStyle || 'cinematic',
+        camera: 'hollywood',
+        lighting: 'golden_hour',
+        colorGrade: 'netflix',
+        motionLevel: 'high',
+        emotion: 'dramatic',
+      },
+      status: 'queued',
+    });
+    await job.save();
+
+    // Convert screenplay scenes to Job Scene documents
+    await screenplayToScenes(screenplay._id, job._id);
+
+    // Mark screenplay as in production
+    screenplay.status = 'in_production';
+    screenplay.jobId = job._id;
+    await screenplay.save();
+
+    // Enqueue the job
+    const { enqueueScriptJob } = await import('../queues/queueManager.js');
+    await enqueueScriptJob(String(job._id));
+
+    res.status(201).json({
+      jobId: job._id,
+      totalScenes: screenplay.totalScenes,
+      totalChapters: screenplay.totalChapters,
+      message: `Production started for "${screenplay.title}" (${screenplay.totalScenes} scenes)`,
+    });
+  } catch (err) { next(err); }
+});
+
+// ── Delete a screenplay ───────────────────────────────────────────────────────
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const screenplay = await Screenplay.findOneAndDelete({
+      _id: req.params.id,
+      workspaceId: req.workspaceId,
+    });
+    if (!screenplay) return res.status(404).json({ error: 'Screenplay not found' });
+    res.json({ message: 'Screenplay deleted', screenplayId: req.params.id });
+  } catch (err) { next(err); }
+});
+
+export default router;

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: aivf-mongo
+    restart: unless-stopped
+    ports:
+      - '27018:27017'
+    volumes:
+      - ./data/mongo:/data/db
+    mem_limit: 512m
+    environment:
+      MONGO_INITDB_DATABASE: ai-video-factory
+
+  redis:
+    image: redis:7-alpine
+    container_name: aivf-redis
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    mem_limit: 128m
+    command: >
+      redis-server
+      --protected-mode no
+      --maxmemory 100mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    volumes:
+      - ./data/redis:/data
+
+volumes:
+  mongo_data:
+  redis_data:

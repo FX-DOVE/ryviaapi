@@ -1,0 +1,26 @@
+FROM node:20-slim
+
+# Install necessary system dependencies for FFmpeg, Canvas, CUDA, etc.
+# Note: For heavy GPU models, you'd typically start from an nvidia/cuda base image,
+# but for a Node.js API orchestrator hitting Python binaries or ComfyUI, this varies.
+# Assuming basic dependencies:
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+# Copy package.json and install dependencies
+COPY package*.json ./
+RUN npm install
+
+# Copy all source code
+COPY . .
+
+# Environment variables
+ENV NODE_ENV=production
+
+# Start the Serverless handler
+CMD ["npm", "run", "start:serverless"]
