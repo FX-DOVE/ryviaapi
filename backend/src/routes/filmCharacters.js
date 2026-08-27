@@ -5,8 +5,9 @@ import {
   refreshCharacterSeedPrompt
 } from '../services/characterConsistencyService.js';
 import { upload } from '../middleware/upload.js';
-import { uploadToCloud } from '../services/storageService.js';
+import { uploadToCloud, getSignedUrl } from '../services/storageService.js';
 import fs from 'fs';
+import axios from 'axios';
 
 const router = express.Router();
 
@@ -28,6 +29,33 @@ router.get('/:id', async (req, res, next) => {
     const character = await FilmCharacter.findOne({ _id: req.params.id, workspaceId: req.workspaceId });
     if (!character) return res.status(404).json({ error: 'Character not found' });
     res.json({ character });
+  } catch (err) { next(err); }
+});
+
+// ── Stream character reference image (avoids expired signed URLs) ─────────────
+// The frontend always requests this proxy URL instead of the raw R2 presigned URL.
+// We re-generate a fresh signed URL from the stored cloud key on every request.
+router.get('/:id/reference-image', async (req, res, next) => {
+  try {
+    const character = await FilmCharacter.findOne({ _id: req.params.id, workspaceId: req.workspaceId });
+    if (!character) return res.status(404).json({ error: 'Character not found' });
+
+    // Get a fresh signed URL or use the stored one
+    let imageUrl = character.referenceImageUrl;
+    if (character.referenceImageKey && typeof getSignedUrl === 'function') {
+      try {
+        imageUrl = await getSignedUrl(character.referenceImageKey, 3600);
+      } catch { /* fall through to stored url */ }
+    }
+
+    if (!imageUrl) return res.status(404).json({ error: 'No reference image' });
+
+    // Stream the image through our server to avoid CORS / expiry issues
+    const response = await axios.get(imageUrl, { responseType: 'stream', timeout: 30000 });
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    response.data.pipe(res);
   } catch (err) { next(err); }
 });
 
@@ -122,3 +150,5 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 export default router;
+
+

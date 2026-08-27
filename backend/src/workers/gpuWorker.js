@@ -14,6 +14,7 @@ import { connectDB } from '../config/db.js';
 import GpuWorker from '../models/GpuWorker.js';
 import { processImageStep, processVideoStep } from './workerSteps.js';
 import eventBus from '../services/eventBus.js';
+import { WORKER_SETTINGS } from '../queues/queueManager.js';
 
 const WORKER_ID = process.env.GPU_WORKER_ID || `gpu-worker-${uuidv4().substring(0, 8)}`;
 const IDLE_TIMEOUT_MS = parseInt(process.env.GPU_WORKER_IDLE_TIMEOUT || '300000', 10);
@@ -82,6 +83,8 @@ async function start() {
 
   resetIdleTimeout();
 
+import { WORKER_SETTINGS } from '../queues/queueManager.js';
+
   // 1. Image Queue Worker
   const imageWorker = new Worker(
     'imageQueue',
@@ -102,7 +105,7 @@ async function start() {
         resetIdleTimeout();
       }
     },
-    { connection, concurrency: 1 }
+    { connection, concurrency: 1, settings: WORKER_SETTINGS }
   );
 
   // 2. Video Queue Worker
@@ -125,7 +128,7 @@ async function start() {
         resetIdleTimeout();
       }
     },
-    { connection, concurrency: 1 }
+    { connection, concurrency: 1, settings: WORKER_SETTINGS }
   );
 
   const workers = [imageWorker, videoWorker];

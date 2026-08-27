@@ -211,12 +211,7 @@ When a user submits a script or document via the React dashboard, the applicatio
 4. Aligning: Matches sentences from the original clean script against the speech-to-text words, calculating exact timestamp boundaries (`startTime` and `endTime`) for each scene block.
 
 ### Step 3: Prompt Building & AI Planning (`processPromptStep`)
-1. Emits a 6-tier LLM fallback prompt generator to write detailed visual descriptions for each scene. The provider chain automatically bypasses any provider whose key is missing from `.env`:
-   - **Groq API** (`llama-3.3-70b-versatile` or `llama3-70b-8192`)
-   - **Gemini API** (`gemini-2.5-flash`)
-   - **OpenRouter API** (`meta-llama/llama-3-70b-instruct`)
-   - **GitHub Models API** (`gpt-4o` / `azure-openai`)
-   - **Custom Custom-Providers** configured in MongoDB.
+1. Uses the reasoning provider (**Google Gemini `gemini-3.5-flash-lite`**) to write detailed visual descriptions for each scene. The director runs on Gemini via OpenAI-compatible endpoints, with an optional explicit `AI_API_ENDPOINT` override for a self-hosted or alternate OpenAI-compatible endpoint.
 2. Triggers the **SaaS AI Planning Layer** (`aiPlannerService.js`) to evaluate and optimize computational costs:
    - **`reuse`**: Runs a semantic search using Sentence Transformers (`all-MiniLM-L6-v2`) to compare the scene's prompt against a database of pre-existing video clips. If a match exceeds `0.65` similarity, it plans to reuse that clip, saving credit costs.
    - **`image_only`**: Identifies if the prompt is a static concept (like a map, chart, logo, or diagram) and bypasses video generation to conserve GPU credits.
@@ -358,9 +353,6 @@ Copy `.env.example` to `.env` and set the following parameters:
 | `ELEVENLABS_API_KEY` | _(Optional)_ | ElevenLabs authentication credential |
 | `GEMINI_API_KEY` | _(Optional)_ | Gemini token for script parsing & transcription fallback |
 | `OPENAI_API_KEY` | _(Optional)_ | OpenAI Whisper API authentication credential |
-| `GROQ_API_KEY` | _(Optional)_ | Groq API credential for prompt extraction fallbacks |
-| `OPENROUTER_API_KEY` | _(Optional)_ | OpenRouter API credential for prompt extraction fallbacks |
-| `GITHUB_MODELS_TOKEN` | _(Optional)_ | GitHub Models access token for prompt extraction fallbacks |
 | `PROVIDER_ENCRYPTION_KEY`| _(64-char Hex String)_ | Key used to encrypt custom provider API tokens in MongoDB |
 
 ---

@@ -43,6 +43,12 @@ export const screenplaysApi = {
   produce: (id) =>
     api.post(`${BASE}/screenplays/${id}/produce`),
 
+  regenerate: (id) =>
+    api.post(`${BASE}/screenplays/${id}/regenerate`, {}),
+
+  patch: (id, data) =>
+    api.patch(`${BASE}/screenplays/${id}`, data),
+
   delete: (id) =>
     api.delete(`${BASE}/screenplays/${id}`),
 };

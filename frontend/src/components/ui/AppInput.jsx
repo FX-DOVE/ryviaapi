@@ -41,7 +41,7 @@ export function AppInput({
         />
       )}
       
-      {error && <div className="text-sm mt-1" style={{ color: 'var(--accent-red)' }}>{error}</div>}
+      {error && <div className="error-text">{error}</div>}
       {hint && !error && <div className="caption mt-1">{hint}</div>}
     </div>
   );

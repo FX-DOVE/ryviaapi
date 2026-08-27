@@ -11,6 +11,7 @@ import { createRedisConnection } from '../config/redis.js';
 import { connectDB } from '../config/db.js';
 import { processRenderingStep } from './workerSteps.js';
 import eventBus from '../services/eventBus.js';
+import { WORKER_SETTINGS } from '../queues/queueManager.js';
 
 const connection = createRedisConnection();
 
@@ -30,6 +31,7 @@ async function start() {
       connection,
       concurrency: 1, // CPU/IO intensive, restrict to 1 parallel render per node process instance
       lockDuration: 30 * 60 * 1000, // 30 mins lock
+      settings: WORKER_SETTINGS,
     }
   );
 

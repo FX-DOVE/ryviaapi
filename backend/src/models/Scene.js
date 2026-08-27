@@ -1,64 +1,99 @@
 import mongoose from 'mongoose';
-import { SCENE_STATUS } from '../config/constants.js';
+import { SCENE_STATUS, SEGMENT_STATUS } from '../config/constants.js';
+
+const beatSchema = new mongoose.Schema({
+  beatNumber:       { type: Number },
+  globalBeatNumber: { type: Number },
+  action:           { type: String, default: '' },
+  dialogue:         { type: String, default: '' },
+  speaker:          { type: String, default: '' },
+  expression:       { type: String, default: '' },
+  mood:             { type: String, default: '' },
+  cameraAngle:      { type: String, default: 'medium_wide' },
+  cameraMovement:   { type: String, default: 'static' },
+  strategy:         { type: String, enum: ['anchor', 'continuation', 'angle_change', 'frame_bridge', 'reaction'], default: 'anchor' },
+  duration:         { type: Number, default: 8 },
+
+  // ── Continuity payload (drives the image prompts) ────────────
+  // Without these the props, worn items and physical states the director planned
+  // are dropped by strict mode on insert, and every shot is rebuilt from scratch.
+  // Mixed rather than Map: `toObject()` hands a Map back as a Map, and the prompt
+  // builder walks these with Object.entries(), which would silently see nothing.
+  props:                  [{ type: String }],
+  accessories:            { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  characterState:         { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  continuityFromPrevious: { type: String, default: '' },
+}, { _id: false });
+
+const segmentSchema = new mongoose.Schema({
+  segmentNumber:  { type: Number },
+  beatNumber:     { type: Number },
+  strategy:       { type: String, default: 'anchor' },
+  keyframePath:   { type: String, default: null },
+  videoPath:      { type: String, default: null },
+  duration:       { type: Number, default: 8 },
+  status:         { type: String, enum: Object.values(SEGMENT_STATUS), default: SEGMENT_STATUS.PENDING },
+  error:          { type: String, default: null },
+}, { _id: false });
 
 const sceneSchema = new mongoose.Schema(
   {
     jobId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Job', required: true, index: true },
     sceneNumber: { type: Number, required: true },
 
+    // ── Director Plan Fields ────────────────────────────────────
     narration:      { type: String, default: '' },
     imagePrompt:    { type: String, default: '' },
     videoPrompt:    { type: String, default: '' },
     enrichedPrompt: { type: String, default: '' },
-    characterId:    { type: String, default: null },
-    environmentId:  { type: String, default: null },
-    directorNote:   { type: String, default: '' },
-    duration:       { type: Number, default: 8 },   // seconds
 
-    // ── Film Mode Fields ─────────────────────────────────────────
-    // Action type — what kind of motion/performance is in this scene
-    actionType: {
-      type: String,
-      enum: ['establishing', 'walking', 'running', 'talking', 'fighting',
-             'crying', 'riding', 'flying', 'celebrating', 'sneaking',
-             'dying', 'transition', 'other'],
-      default: 'establishing'
-    },
-    actionDescription: { type: String, default: '' },  // plain-English action
-    cameraType:        { type: String, default: 'medium_wide' },
+    // Scene metadata
+    actionDescription: { type: String, default: '' },
+    location:          { type: String, default: '' },
+    // Join key onto directorPlan.environments[].locationId. The environment lock
+    // is stored under this key, so without it the lock never resolves and every
+    // scene re-invents its own version of the same room.
+    locationId:        { type: String, default: '' },
+    timeOfDay:         { type: String, default: '' },
+    emotion:           { type: String, default: 'neutral' },
+    intensity:         { type: Number, min: 1, max: 10, default: 5 },
+    act:               { type: Number, default: 1 },
+    chapter:           { type: Number, default: 1 },
 
-    // Characters present in this scene
-    characterNames: [{ type: String }],               // character names (from screenplay)
-    filmCharacterIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FilmCharacter' }],
-
-    // Per-character dialogue lines (for lip sync)
+    // ── Screenplay pipeline fields ──────────────────────────────
+    // screenplayToScenes() writes these; strict mode dropped them silently, so
+    // scripted dialogue never reached the scene documents.
+    actionType: { type: String, default: '' },
+    cameraType: { type: String, default: '' },
     dialogue: [{
-      speaker:    { type: String },
-      line:       { type: String },
-      audioUrl:   { type: String, default: null },  // ElevenLabs generated audio
-      lipSyncUrl: { type: String, default: null },  // MuseTalk/SyncLabs synced video
+      speaker: { type: String, default: '' },
+      line:    { type: String, default: '' },
+      _id:     false,
     }],
 
-    // Emotion and story context
-    emotion:    { type: String, default: 'neutral' },
-    intensity:  { type: Number, min: 1, max: 10, default: 5 },
-    location:   { type: String, default: '' },   // "INT. THRONE ROOM - NIGHT"
-    act:        { type: Number, default: 1 },
-    chapter:    { type: Number, default: 1 },   // which chapter batch
+    // Characters in this scene
+    characterNames: [{ type: String }],
 
-    // Transition to next scene
+    // ── Beats (8-second segment plans from Cinematic Director) ──
+    beats:         [beatSchema],
+    totalSegments: { type: Number, default: 0 },
+    duration:      { type: Number, default: 8 },
+
+    // ── Generated Segments (actual video segments) ──────────────
+    segments:      [segmentSchema],
+
+    // ── Consistency Lock References ─────────────────────────────
+    characterLockRefs:  [{ type: String }],  // paths to character reference images
+    environmentLockRef: { type: String, default: null },
+
+    // ── Transition ──────────────────────────────────────────────
     transitionOut: {
       type: String,
       enum: ['cut', 'fade', 'dissolve', 'wipe', 'none'],
       default: 'cut'
     },
-    lipSync: {
-      required:       { type: Boolean, default: false },
-      audioUrl:       { type: String, default: null },
-      syncedVideoUrl: { type: String, default: null },
-      syncedVideoKey: { type: String, default: null },
-      status:         { type: String, enum: ['pending', 'processing', 'done', 'skipped'], default: 'pending' }
-    },
+
+    // ── Revision History ────────────────────────────────────────
     revisions: [{
       version:   { type: Number },
       imagePath: { type: String },
@@ -67,7 +102,8 @@ const sceneSchema = new mongoose.Schema(
       createdAt: { type: Date, default: Date.now }
     }],
 
-    status:       {
+    // ── Status ──────────────────────────────────────────────────
+    status: {
       type:    String,
       enum:    Object.values(SCENE_STATUS),
       default: SCENE_STATUS.PENDING,
@@ -77,16 +113,9 @@ const sceneSchema = new mongoose.Schema(
       action:  { type: String, enum: ['reuse', 'generate', 'animate', 'image_only', 'skip', 'stock'], default: 'generate' },
       details: { type: mongoose.Schema.Types.Mixed, default: null }
     },
-    plannerStatus: {
-      type:    String,
-      enum:    ['pending', 'planned', 'skipped'],
-      default: 'pending'
-    },
 
     imagePath:   { type: String, default: null },
     videoPath:   { type: String, default: null },
-    audioPath:   { type: String, default: null },
-
 
     retryCount:  { type: Number, default: 0 },
     error:       { type: String, default: null },
@@ -94,7 +123,7 @@ const sceneSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Compound index for efficient batch queries: "give me all pending scenes for job X in order"
+// Compound index for efficient batch queries
 sceneSchema.index({ jobId: 1, sceneNumber: 1 });
 sceneSchema.index({ jobId: 1, status: 1 });
 

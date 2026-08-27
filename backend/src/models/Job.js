@@ -8,7 +8,6 @@ const jobInputSchema = new mongoose.Schema(
     styleGuide:    { type: String, default: '' },
     style:         { type: String, enum: ['cinematic', 'documentary', 'social', 'corporate'], default: 'cinematic' },
     pacing:        { type: String, enum: ['slow', 'medium', 'fast'], default: 'medium' },
-    voiceoverPath: { type: String, default: null },
     uploadedFiles: [{ type: String }],
   },
   { _id: false },
@@ -23,8 +22,6 @@ const jobSchema = new mongoose.Schema(
     inputMode:       { type: String, enum: ['idea_mode', 'assets_mode', 'film_mode'], default: 'idea_mode' },
     userAssets: {
       scriptText:    { type: String, default: '' },
-      voiceoverUrl:  { type: String, default: null },
-      voiceoverKey:  { type: String, default: null },
       titleText:     { type: String, default: '' },
       extraImageUrls:[{ type: String }]
     },
@@ -35,7 +32,6 @@ const jobSchema = new mongoose.Schema(
       colorGrade:      { type: String, default: 'netflix' },
       motionLevel:     { type: String, default: 'medium' },
       emotion:         { type: String, default: 'neutral' },
-      musicStyle:      { type: String, default: 'documentary' },
       customStyleNotes:{ type: String, default: '' }
     },
     directorNotes: [
@@ -71,14 +67,13 @@ const jobSchema = new mongoose.Schema(
       }
     ],
 
-
     totalScenes:     { type: Number, default: 0 },
     completedScenes: { type: Number, default: 0 },
+    totalBeats:      { type: Number, default: 0 },
 
-    provider:        { type: String, enum: ['grok', 'local-gpu', 'kling', 'runway', 'wan21'], default: 'grok' },
-    transcriptionProvider: { type: String, enum: ['openai-whisper', 'gemini-2.5-flash', 'local-whisper'], default: null },
-    reasoningProvider:     { type: String, default: null },  // which AI built the scene prompts
-    scriptGenerated:       { type: Boolean, default: false }, // true if script was auto-written from prompt
+    provider:        { type: String, default: 'ltx' },
+    reasoningProvider:     { type: String, default: null },
+    scriptGenerated:       { type: Boolean, default: false },
 
     subtitleBurnIn:  { type: Boolean, default: false },
 
@@ -88,34 +83,36 @@ const jobSchema = new mongoose.Schema(
     duration:        { type: Number, default: null },   // seconds
     fileSize:        { type: Number, default: null },   // bytes
 
-    // Cost tracking (useful when billing users later)
+    // Cost tracking
     estimatedCost:   { type: Number, default: 0 },
     actualCost:      { type: Number, default: 0 },
 
     input:           { type: jobInputSchema, default: () => ({}) },
 
+    // ── Cinematic Director Plan ────────────────────────────────
+    directorPlan:    { type: mongoose.Schema.Types.Mixed, default: null },
+
+    // ── Consistency Locks ──────────────────────────────────────
+    // Map of character name → { lockPrompt, referenceImagePath }
+    characterLocks:    { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Map of location ID → { lockPrompt, referenceImagePath }
+    environmentLocks:  { type: mongoose.Schema.Types.Mixed, default: {} },
+
     // ── Film Mode Fields ───────────────────────────────────────
     filmMode:          { type: Boolean, default: false },
     screenplayId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Screenplay', default: null },
-    filmCharacterIds:  [{ type: mongoose.Schema.Types.ObjectId, ref: 'FilmCharacter' }],
     animationStyle: {
       type: String,
       enum: ['2d_anime', 'pixar', '3d_cgi_hollywood', 'nollywood_drama', 'realistic', 'cinematic', null],
       default: null
     },
     targetDurationMinutes: { type: Number, default: null },
-    totalChapters:     { type: Number, default: 1 },
-    completedChapters: { type: Number, default: 0 },
-    chapterVideoPaths: [{ type: String }],          // assembled chapter videos (intermediate)
-    musicTracks:       [{ type: String }],          // generated background music per act
     genre:             { type: String, default: '' },
+    aspectRatio:       { type: String, default: '16:9' },
 
     error:           { type: String, default: null },
     failureReason:   { type: String, default: null },
     retryCount:      { type: Number, default: 0 },
-
-    fullAudioPath:   { type: String, default: null },
-    transcript:      { type: Array, default: [] },
 
     completedAt:     { type: Date, default: null },
   },

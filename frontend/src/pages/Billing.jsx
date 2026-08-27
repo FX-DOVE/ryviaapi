@@ -47,7 +47,7 @@ export default function Billing() {
       />
 
       {message && (
-        <div className="bg-green-500/10 border border-green-500/20 text-[var(--accent-green)] p-4 rounded-[var(--radius-md)] mb-8 text-sm flex items-center gap-3 animation-fade-in">
+        <div className="alert alert-success">
           <Check size={18} /> {message}
         </div>
       )}
@@ -92,7 +92,7 @@ export default function Billing() {
               <p className="body-text text-sm min-h-[48px]">{p.desc}</p>
 
               <div className="billing-plan-price">
-                <span className="text-4xl font-bold text-[var(--text-primary)]">{p.price}</span>
+                <span className="metric-value" style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}>{p.price}</span>
                 <span className="caption ml-2">one-time</span>
               </div>
 

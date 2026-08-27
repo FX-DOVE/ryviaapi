@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express       from 'express';
+import path          from 'path';
 import http          from 'http';
 import cors          from 'cors';
 import helmet        from 'helmet';
@@ -19,23 +20,10 @@ import authRoutes       from './routes/auth.js';
 import projectRoutes    from './routes/projects.js';
 import screenplayRoutes from './routes/screenplays.js';
 import filmCharRoutes   from './routes/filmCharacters.js';
-import { seedBuiltinProviders } from './services/providerSeedService.js';
-import rateLimit      from 'express-rate-limit';
+// Providers are configured via .env file
 
 const app    = express();
 const server = http.createServer(app);
-
-// ─── RATE LIMITING ─────────────────────────────────────────────────────────────
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200, // max 200 requests per 15 minutes per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
-});
-
-// Apply rate limiter to all API endpoints
-app.use('/api/', apiLimiter);
 
 // ─── SOCKET.IO ───────────────────────────────────────────────────────────────
 initSocket(server);
@@ -47,6 +35,7 @@ app.use(compression());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use('/mock-storage', express.static(path.join(process.cwd(), 'storage', 'public', 'mock-storage')));
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 // API V1
@@ -71,10 +60,7 @@ app.use('/api/film-characters',  authMiddleware, filmCharRoutes);
 
 
 
-// Seed built-in providers into the DB (idempotent — safe to run on every restart)
-seedBuiltinProviders().catch((err) =>
-  console.error('[App] Provider seed failed:', err.message)
-);
+
 
 app.get('/api/ping', (req, res) => res.json({ pong: true, ts: Date.now() }));
 

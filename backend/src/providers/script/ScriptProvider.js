@@ -10,7 +10,12 @@ export class ScriptProvider {
    * @returns {Promise<string>}
    */
   async generateText(systemPrompt, userPrompt, purpose = 'script-generation', forceProvider = null) {
-    const { text } = await generateWithFallback(systemPrompt, userPrompt, purpose, forceProvider);
+    const { text } = await generateWithFallback({
+      systemPrompt,
+      userPrompt,
+      purpose,
+      preferredProviderId: forceProvider || '',
+    });
     return text;
   }
 }

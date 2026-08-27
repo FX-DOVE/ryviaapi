@@ -1,277 +1,196 @@
 /**
- * providerController.js — REST controllers for AI provider management.
+ * providerController.js — REST controllers for AI connection status.
  *
- * Endpoints:
- *   GET    /api/providers              — list all providers (keys masked)
- *   POST   /api/providers              — add custom provider (test-connects first)
- *   POST   /api/providers/:id/test     — re-test an existing provider
- *   PUT    /api/providers/reorder      — bulk-update priorities
- *   PATCH  /api/providers/:id          — toggle enabled / update name
- *   DELETE /api/providers/:id          — remove custom provider (built-ins protected)
+ *   GET  /api/providers/status      — what each model role is pointed at
+ *   POST /api/providers/test        — probe every endpoint
+ *   POST /api/providers/:type/test  — probe one of reasoning | video | image
+ *
+ * There are four endpoints behind three roles: the reasoning transport, the LTX
+ * video endpoint, and *two* Qwen endpoints (text2image and edit are deployed
+ * separately because both pipelines resident at fp8 will not fit on a 48 GB
+ * card). The edit endpoint is the one continuity depends on, so it is reported
+ * on its own rather than folded into a single "image" boolean.
+ *
+ * Endpoint ids are shown unmasked: they are not secrets, and a stale id that
+ * answers HTTP 404 while the API key is valid is the most common failure here.
  */
 
-import ProviderConfig from '../models/ProviderConfig.js';
-import { encrypt, maskKey, decrypt } from '../services/encryptionService.js';
-import { testProviderConnection, invalidateProviderCache } from '../providers/reasoningProvider.js';
+import { testProviderConnection, getAIConfig } from '../providers/reasoningProvider.js';
+import { LtxVideoProvider } from '../providers/video/LtxVideoProvider.js';
+import { QwenImageProvider } from '../providers/image/QwenImageProvider.js';
+import { health } from '../providers/runpodClient.js';
+
+// ─── GET /api/providers/status ────────────────────────────────────────────────
+
+export async function listProviders(req, res, next) {
+  try {
+    const config = getAIConfig();
+
+    res.json({
+      providers: [
+        {
+          name: 'AI Reasoning',
+          type: 'reasoning',
+          model: config.reasoning.model || 'Not configured',
+          endpoint: maskEndpoint(config.reasoning.endpoint),
+          configured: config.reasoning.configured,
+          icon: '🧠',
+          description: 'Script analysis, directing, prompt building',
+          // Fallback chain, in the order it is tried.
+          fallbacks: config.reasoning.transports.map((t) => `${t.id} (${t.model})`),
+        },
+        {
+          name: 'LTX-2.5 Video',
+          type: 'video',
+          model: config.video.model,
+          endpoint: config.video.endpoint,
+          configured: config.video.configured,
+          icon: '🎬',
+          description: `Image→video and frame→frame with native audio, ${config.video.resolution}`,
+        },
+        {
+          name: 'Qwen-Image',
+          type: 'image',
+          model: config.image.model,
+          endpoint: config.image.endpoint,
+          editEndpoint: config.image.editEndpoint,
+          configured: config.image.configured,
+          icon: '🖼️',
+          description: 'Lock sheets, anchor keyframes, and edit-based continuity frames',
+        },
+      ],
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/providers/test ─────────────────────────────────────────────────
+
+export async function testAllProviders(req, res, next) {
+  try {
+    const ltx = new LtxVideoProvider();
+    const qwen = new QwenImageProvider();
+
+    const [reasoning, video, imageT2i, imageEdit] = await Promise.all([
+      testProviderConnection(),
+      probe(ltx.endpointId, 'LTX-2.5'),
+      probe(qwen.t2iEndpoint, 'Qwen-Image text2image'),
+      probe(qwen.editEndpoint, 'Qwen-Image edit'),
+    ]);
+
+    res.json({
+      reasoning,
+      video,
+      // `image` stays a single object so existing callers keep working; the edit
+      // endpoint is reported alongside it because continuity needs both.
+      image: imageT2i,
+      imageEdit,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /api/providers/:type/test ───────────────────────────────────────────
+
+export async function testProvider(req, res, next) {
+  try {
+    const { type } = req.params;
+
+    switch (type) {
+      case 'reasoning':
+        return res.json(await testProviderConnection());
+      case 'video': {
+        const ltx = new LtxVideoProvider();
+        return res.json(await probe(ltx.endpointId, 'LTX-2.5'));
+      }
+      case 'image': {
+        const qwen = new QwenImageProvider();
+        const [t2i, edit] = await Promise.all([
+          probe(qwen.t2iEndpoint, 'Qwen-Image text2image'),
+          probe(qwen.editEndpoint, 'Qwen-Image edit'),
+        ]);
+        return res.json({ ...t2i, edit });
+      }
+      default:
+        return res.status(400).json({ error: `Unknown provider type: ${type}` });
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Stub methods to keep routes working (these features are simplified now)
+export async function createProvider(req, res) {
+  res.status(400).json({ error: 'Custom providers removed. Configure endpoints in .env file.' });
+}
+export async function reorderProviders(req, res) {
+  res.status(400).json({ error: 'Provider reordering removed. Single endpoint configured via .env.' });
+}
+export async function updateProvider(req, res) {
+  res.status(400).json({ error: 'Provider updates removed. Configure endpoints in .env file.' });
+}
+export async function deleteProvider(req, res) {
+  res.status(400).json({ error: 'Provider deletion removed. Configure endpoints in .env file.' });
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Format a provider document for API response.
- * Masks the API key so the frontend never receives plaintext credentials.
+ * Runpod's /health call is free and needs no worker, so it distinguishes "not
+ * configured" from "wrong id" from "no capacity" without paying a cold start.
  */
-function formatProvider(doc) {
-  const obj = doc.toObject ? doc.toObject() : { ...doc };
+async function probe(endpointId, model) {
+  const endpoint = endpointId ? `https://api.runpod.ai/v2/${endpointId}` : '';
+  const h = await health(endpointId);
 
-  // Derive masked key for display
-  let maskedKey = '';
-  if (obj.encryptedApiKey) {
-    try {
-      maskedKey = maskKey(decrypt(obj.encryptedApiKey));
-    } catch {
-      maskedKey = '••••(decrypt error)';
-    }
+  if (!h) {
+    return {
+      connected: false,
+      error: 'RUNPOD_API_KEY or the endpoint id is not configured',
+      endpoint,
+      model,
+    };
+  }
+  if (!h.ok) {
+    return { connected: false, error: h.error, httpStatus: h.httpStatus, endpoint, model };
   }
 
-  // Built-in providers: show a hint that the key comes from env
-  if (obj.type === 'builtin') {
-    maskedKey = getBuiltinKeyHint(obj.builtinId);
-  }
-
+  const w = h.workers || {};
+  const j = h.jobs || {};
   return {
-    _id:           obj._id,
-    name:          obj.name,
-    type:          obj.type,
-    builtinId:     obj.builtinId,
-    endpoint:      obj.endpoint,
-    model:         obj.model,
-    maskedKey,                    // ← never plaintext
-    priority:      obj.priority,
-    enabled:       obj.enabled,
-    connected:     obj.connected,
-    // 'configured' = key is actually present in env (built-ins) or stored (custom)
-    // Allows the UI to distinguish gray "not configured" from red "connection failed"
-    configured:    obj.type === 'builtin' ? isBuiltinConfigured(obj.builtinId) : Boolean(obj.encryptedApiKey),
-    lastCheckedAt: obj.lastCheckedAt,
-    lastError:     obj.lastError,
-    createdAt:     obj.createdAt,
+    connected: true,
+    error: '',
+    endpoint,
+    model,
+    workers: w,
+    jobs: j,
+    // Surfaced because a queued job with no ready worker means a 7-11 min cold
+    // start, and `throttled` means the GPU tier has no capacity in this region.
+    note: [
+      `${w.ready || 0} ready / ${w.running || 0} running / ${w.idle || 0} idle`,
+      w.throttled ? `${w.throttled} throttled — no GPU capacity in region` : '',
+      j.inQueue ? `${j.inQueue} queued` : '',
+    ].filter(Boolean).join(', '),
   };
 }
 
-function getBuiltinKeyHint(builtinId) {
-  if (builtinId === 'ollama') return 'Local endpoint (no key needed)';
-
-  const ENV_MAP = {
-    'grok-cli':       'GROK_CMD (CLI binary)',
-    'gemini':         'GEMINI_API_KEY env var',
-    'groq':           'GROQ_API_KEY env var',
-    'openrouter':     'OPENROUTER_API_KEY env var',
-    'github-models':  'GITHUB_MODELS_TOKEN env var',
-  };
-  const envVar = ENV_MAP[builtinId];
-  if (!envVar) return '';
-  // Check if the env var is actually set
-  const KEY_ENV = {
-    'grok-cli':       process.env.GROK_CMD,
-    'gemini':         process.env.GEMINI_API_KEY,
-    'groq':           process.env.GROQ_API_KEY,
-    'openrouter':     process.env.OPENROUTER_API_KEY,
-    'github-models':  process.env.GITHUB_MODELS_TOKEN,
-  };
-  return KEY_ENV[builtinId] ? `Set (${envVar})` : `Not set (${envVar})`;
-}
-
-/** True when the env var for a built-in is actually configured */
-function isBuiltinConfigured(builtinId) {
-  if (builtinId === 'ollama') return true;
-
-  const KEY_ENV = {
-    'grok-cli':       process.env.GROK_CMD,
-    'gemini':         process.env.GEMINI_API_KEY,
-    'groq':           process.env.GROQ_API_KEY,
-    'openrouter':     process.env.OPENROUTER_API_KEY,
-    'github-models':  process.env.GITHUB_MODELS_TOKEN,
-  };
-  return Boolean(KEY_ENV[builtinId]);
-}
-
-// ─── GET /api/providers ───────────────────────────────────────────────────────
-
-export async function listProviders(req, res, next) {
+function maskEndpoint(url) {
+  if (!url) return 'Not configured';
   try {
-    const providers = await ProviderConfig.find().sort({ priority: 1 });
-    res.json(providers.map(formatProvider));
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ─── POST /api/providers ─────────────────────────────────────────────────────
-
-export async function createProvider(req, res, next) {
-  try {
-    const { name, endpoint, apiKey, model } = req.body;
-
-    if (!name?.trim())     return res.status(400).json({ error: 'Provider name is required' });
-    if (!endpoint?.trim()) return res.status(400).json({ error: 'Endpoint URL is required' });
-    if (!model?.trim())    return res.status(400).json({ error: 'Model name is required' });
-
-    // Test connection BEFORE saving
-    const { connected, error: testError } = await testProviderConnection({
-      builtinId: null,
-      endpoint:  endpoint.trim(),
-      apiKey:    apiKey || '',
-      model:     model.trim(),
-    });
-
-    if (!connected) {
-      return res.status(400).json({
-        error: `Connection test failed: ${testError}`,
-        connected: false,
-      });
-    }
-
-    // Encrypt the API key
-    const encryptedApiKey = apiKey ? encrypt(apiKey) : '';
-
-    // Find the highest current custom priority and add 10
-    const lastCustom = await ProviderConfig.findOne({ type: 'custom' }).sort({ priority: -1 });
-    const priority   = lastCustom ? lastCustom.priority + 10 : 210;
-
-    const provider = await ProviderConfig.create({
-      name:     name.trim(),
-      type:     'custom',
-      builtinId: null,
-      endpoint:  endpoint.trim(),
-      encryptedApiKey,
-      model:    model.trim(),
-      priority,
-      enabled:  true,
-      connected: true,
-      lastCheckedAt: new Date(),
-      lastError: '',
-    });
-
-    invalidateProviderCache();
-    res.status(201).json(formatProvider(provider));
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ─── POST /api/providers/:id/test ────────────────────────────────────────────
-
-export async function testProvider(req, res, next) {
-  try {
-    const provider = await ProviderConfig.findById(req.params.id);
-    if (!provider) return res.status(404).json({ error: 'Provider not found' });
-
-    let apiKey = '';
-    if (provider.type === 'custom' && provider.encryptedApiKey) {
-      try {
-        apiKey = decrypt(provider.encryptedApiKey);
-      } catch (e) {
-        return res.status(500).json({ error: `Cannot decrypt stored API key: ${e.message}` });
-      }
-    }
-
-    const { connected, error: testError } = await testProviderConnection({
-      builtinId: provider.builtinId,
-      endpoint:  provider.endpoint,
-      apiKey,
-      model:     provider.model,
-    });
-
-    await ProviderConfig.findByIdAndUpdate(req.params.id, {
-      connected,
-      lastCheckedAt: new Date(),
-      lastError: testError || '',
-    });
-
-    invalidateProviderCache();
-    res.json({ connected, error: testError });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ─── PUT /api/providers/reorder ──────────────────────────────────────────────
-
-/**
- * Accept a full reordered list and update all priorities atomically.
- * Body: [{ id: "...", priority: 100 }, ...]
- */
-export async function reorderProviders(req, res, next) {
-  try {
-    const items = req.body;
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Body must be a non-empty array of { id, priority }' });
-    }
-
-    await Promise.all(
-      items.map(({ id, priority }) =>
-        ProviderConfig.findByIdAndUpdate(id, { priority: Number(priority) })
-      )
-    );
-
-    invalidateProviderCache();
-    const updated = await ProviderConfig.find().sort({ priority: 1 });
-    res.json(updated.map(formatProvider));
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ─── PATCH /api/providers/:id ─────────────────────────────────────────────────
-
-export async function updateProvider(req, res, next) {
-  try {
-    const provider = await ProviderConfig.findById(req.params.id);
-    if (!provider) return res.status(404).json({ error: 'Provider not found' });
-
-    const { enabled, name, model, apiKey } = req.body;
-
-    const updates = {};
-    if (typeof enabled === 'boolean') updates.enabled = enabled;
-    if (name  !== undefined) updates.name  = name.trim();
-    if (model !== undefined) updates.model = model.trim();
-    if (apiKey !== undefined && provider.type === 'custom') {
-      updates.encryptedApiKey = apiKey ? encrypt(apiKey) : '';
-    }
-
-    const updated = await ProviderConfig.findByIdAndUpdate(req.params.id, updates, { new: true });
-    invalidateProviderCache();
-    res.json(formatProvider(updated));
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ─── DELETE /api/providers/:id ────────────────────────────────────────────────
-
-export async function deleteProvider(req, res, next) {
-  try {
-    const provider = await ProviderConfig.findById(req.params.id);
-    if (!provider) return res.status(404).json({ error: 'Provider not found' });
-
-    if (provider.type === 'builtin') {
-      return res.status(403).json({
-        error: 'Built-in providers cannot be deleted. You can disable them instead.',
-      });
-    }
-
-    await ProviderConfig.deleteOne({ _id: req.params.id });
-    invalidateProviderCache();
-    res.json({ message: 'Provider removed successfully' });
-  } catch (err) {
-    next(err);
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}/...`;
+  } catch {
+    return url.slice(0, 30) + '...';
   }
 }
 
 export default {
   listProviders,
-  createProvider,
+  testAllProviders,
   testProvider,
+  createProvider,
   reorderProviders,
   updateProvider,
   deleteProvider,

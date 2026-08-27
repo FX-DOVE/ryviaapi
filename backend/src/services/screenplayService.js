@@ -2,6 +2,7 @@ import { generateWithFallback } from '../providers/reasoningProvider.js';
 import Screenplay from '../models/Screenplay.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 import { compileCharacterSeedPrompt } from './characterConsistencyService.js';
+import { emitWorkspaceEvent } from '../config/socket.js';
 
 /**
  * SCREENPLAY SERVICE — AI Feature Film Writer
@@ -21,6 +22,22 @@ import { compileCharacterSeedPrompt } from './characterConsistencyService.js';
  */
 
 const SCENES_PER_MINUTE = 6;  // 10-second clips = 6 scenes per minute
+const MAX_GENERATION_ATTEMPTS = 5;  // startup recovery gives up after this many tries
+
+/**
+ * Best-effort push of a generation milestone to the screenplay's workspace room.
+ * Never allowed to break generation if the socket layer is unavailable.
+ */
+function emitScreenplayUpdate(screenplay, patch) {
+  try {
+    emitWorkspaceEvent(String(screenplay.workspaceId), 'screenplay_updated', {
+      screenplayId: String(screenplay._id),
+      ...patch,
+    });
+  } catch {
+    // Socket delivery is best-effort.
+  }
+}
 
 // ─── Stage 1: Story Bible ──────────────────────────────────────────────────────
 
@@ -140,72 +157,123 @@ Output ONLY the raw JSON array. No markdown, no explanation.`;
   return scenes;
 }
 
-// ─── Main Entry Point ──────────────────────────────────────────────────────────
+// ─── Doc creation (fast, no LLM) ────────────────────────────────────────────────
 
 /**
- * Generate a complete feature-length screenplay from a brief synopsis.
+ * Create (or reset, when `_existingId` is given) a Screenplay document in the
+ * `generating` state and return it immediately — NO LLM work happens here.
  *
- * @param {Object} input
- * @param {string} input.title
- * @param {string} input.genre
- * @param {string} input.synopsis
- * @param {string} input.tone
- * @param {string[]} input.themes
- * @param {string} input.animationStyle
- * @param {number} input.targetDurationMinutes
- * @param {ObjectId[]} input.filmCharacterIds
- * @param {ObjectId} input.workspaceId
- * @param {ObjectId} input.projectId
- * @param {ObjectId} input.createdBy
- * @param {string} [input.jobId]
- * @returns {Promise<Screenplay>} Saved Screenplay document
+ * The heavy multi-stage generation runs separately in `runScreenplayGeneration`,
+ * so the HTTP request that starts a screenplay returns in milliseconds and a
+ * backend restart can never strand an in-flight request.
+ *
+ * @param {Object} input  (see generateScreenplay for field docs)
+ * @returns {Promise<Screenplay>} the saved `generating` document
  */
-export async function generateScreenplay({
+export async function createScreenplayDraft({
   title, genre = 'drama', synopsis, tone = 'dramatic',
   themes = [], animationStyle = 'cinematic',
   targetDurationMinutes = 90,
   filmCharacterIds = [],
   additionalSettings = '',
   workspaceId, projectId, createdBy,
-  jobId = '',
+  _existingId = null,  // If set, reset existing doc instead of creating new one
 }) {
-  const startTime = Date.now();
-  console.log(`[ScreenplayService] Starting screenplay generation for "${title}" (${targetDurationMinutes} min)`);
-
-  // Load character records
+  // Load character records + refresh their cached seed prompts
   const characters = filmCharacterIds.length > 0
     ? await FilmCharacter.find({ _id: { $in: filmCharacterIds } })
     : [];
-
-  // Refresh seed prompts for all characters
   for (const char of characters) {
     if (!char.seedPrompt) {
       char.seedPrompt = compileCharacterSeedPrompt(char);
       await char.save();
     }
   }
+  const characterProfiles = characters.map(c => ({
+    filmCharacterId: c._id,
+    name: c.name,
+    role: c.role,
+    arc: '',
+    seedPrompt: c.seedPrompt,
+  }));
 
-  // Create screenplay document in draft state
-  const screenplay = new Screenplay({
-    workspaceId, projectId, createdBy,
-    title, genre, synopsis, tone, themes, animationStyle,
-    targetDurationMinutes, additionalSettings,
-    status: 'generating',
-    characters: characters.map(c => ({
-      filmCharacterId: c._id,
-      name: c.name,
-      role: c.role,
-      arc: '',
-      seedPrompt: c.seedPrompt,
-    })),
-  });
+  let screenplay;
+  if (_existingId) {
+    screenplay = await Screenplay.findById(_existingId);
+    if (!screenplay) throw new Error(`Screenplay ${_existingId} not found for regeneration`);
+    // Reset to a clean generating state — a user-initiated (re)generation gets a
+    // fresh attempt budget.
+    screenplay.status = 'generating';
+    screenplay.scenes = [];
+    screenplay.acts = [];
+    screenplay.totalScenes = 0;
+    screenplay.totalChapters = 0;
+    screenplay.storyBible = '';
+    screenplay.generationMs = 0;
+    screenplay.generationAttempts = 0;
+    screenplay.generationError = '';
+    screenplay.characters = characterProfiles;
+  } else {
+    screenplay = new Screenplay({
+      workspaceId, projectId, createdBy,
+      title, genre, synopsis, tone, themes, animationStyle,
+      targetDurationMinutes, additionalSettings,
+      status: 'generating',
+      generationAttempts: 0,
+      generationError: '',
+      characters: characterProfiles,
+    });
+  }
+
   await screenplay.save();
+  return screenplay;
+}
+
+// ─── Main generation (LLM, resumable) ────────────────────────────────────────────
+
+/**
+ * Run the multi-stage LLM generation on an existing `generating` Screenplay:
+ *   Stage 1: Story Bible + Act Structure
+ *   Stage 2: Scene List per Act  (saved after every act, so a restart resumes
+ *            with minimal rework and the UI can show a live scene count)
+ *
+ * Fired detached by the routes and re-fired by `recoverStuckScreenplays()` on
+ * boot, so it is safe to run against a doc that is already `generating`. Progress
+ * is streamed to the workspace room as `screenplay_updated` events.
+ *
+ * @param {string|ObjectId} screenplayId
+ * @param {object} [opts]
+ * @param {string} [opts.jobId]
+ * @returns {Promise<Screenplay>}
+ */
+export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {}) {
+  const startTime = Date.now();
+
+  const screenplay = await Screenplay.findById(screenplayId);
+  if (!screenplay) throw new Error(`Screenplay ${screenplayId} not found for generation`);
+
+  // Count this attempt up-front so a crash/restart loop is bounded by the cap.
+  screenplay.status = 'generating';
+  screenplay.generationAttempts = (screenplay.generationAttempts || 0) + 1;
+  screenplay.generationError = '';
+  await screenplay.save();
+
+  const targetDurationMinutes = screenplay.targetDurationMinutes || 90;
+  const totalScenesTarget = targetDurationMinutes * SCENES_PER_MINUTE;
+
+  console.log(`[ScreenplayService] Generating "${screenplay.title}" (attempt ${screenplay.generationAttempts}, ${targetDurationMinutes} min)`);
 
   try {
     // ── Stage 1: Story Bible ──────────────────────────────────────
     console.log(`[ScreenplayService] Stage 1: Generating story bible...`);
     const bible = await generateStoryBible({
-      title, genre, synopsis, tone, themes, animationStyle, additionalSettings,
+      title: screenplay.title,
+      genre: screenplay.genre,
+      synopsis: screenplay.synopsis,
+      tone: screenplay.tone,
+      themes: screenplay.themes || [],
+      animationStyle: screenplay.animationStyle,
+      additionalSettings: screenplay.additionalSettings,
       characters: screenplay.characters,
       jobId,
     });
@@ -230,14 +298,14 @@ export async function generateScreenplay({
     }
 
     await screenplay.save();
+    emitScreenplayUpdate(screenplay, { status: 'generating', stage: 'bible', acts: screenplay.acts });
 
     // ── Stage 2: Scene Generation per Act ────────────────────────
-    const totalScenes = targetDurationMinutes * SCENES_PER_MINUTE;
-    const scenesPerAct = Math.ceil(totalScenes / screenplay.acts.length);
+    const scenesPerAct = Math.ceil(totalScenesTarget / screenplay.acts.length);
 
     // Distribute scenes across acts
     const actsWithCounts = screenplay.acts.map((act, i) => {
-      const remaining = totalScenes - (i * scenesPerAct);
+      const remaining = totalScenesTarget - (i * scenesPerAct);
       return { ...act.toObject(), sceneCount: Math.min(scenesPerAct, remaining) };
     });
 
@@ -248,7 +316,10 @@ export async function generateScreenplay({
       console.log(`[ScreenplayService] Stage 2: Generating Act ${actData.actNumber} scenes (${actData.sceneCount} scenes)...`);
 
       const actScenes = await generateActScenes({
-        title, actData, animationStyle, additionalSettings,
+        title: screenplay.title,
+        actData,
+        animationStyle: screenplay.animationStyle,
+        additionalSettings: screenplay.additionalSettings,
         characters: screenplay.characters,
         sceneOffset,
         jobId,
@@ -270,9 +341,19 @@ export async function generateScreenplay({
 
       allScenes.push(...actScenes);
       sceneOffset += actScenes.length;
+
+      // Persist progress after each act so a restart resumes with minimal rework.
+      screenplay.scenes = allScenes;
+      screenplay.totalScenes = allScenes.length;
+      screenplay.markModified('scenes');
+      await screenplay.save();
+      emitScreenplayUpdate(screenplay, {
+        status: 'generating', stage: 'scenes',
+        scenesSoFar: allScenes.length, totalScenesTarget,
+      });
     }
 
-    // Save all scenes to screenplay
+    // Finalize
     screenplay.scenes = allScenes;
     screenplay.totalScenes = allScenes.length;
     screenplay.totalChapters = Math.ceil(allScenes.length / 30);
@@ -282,19 +363,62 @@ export async function generateScreenplay({
 
     await screenplay.save();
     console.log(`[ScreenplayService] ✅ Screenplay complete: ${allScenes.length} scenes in ${screenplay.generationMs}ms`);
+    emitScreenplayUpdate(screenplay, {
+      status: 'ready',
+      totalScenes: screenplay.totalScenes,
+      totalChapters: screenplay.totalChapters,
+      title: screenplay.title,
+    });
     return screenplay;
 
   } catch (err) {
     screenplay.status = 'draft';
+    screenplay.generationError = err.message || String(err);
     await screenplay.save();
     console.error(`[ScreenplayService] Screenplay generation failed:`, err.message);
+    emitScreenplayUpdate(screenplay, { status: 'draft', generationError: screenplay.generationError });
     throw err;
   }
 }
 
 /**
+ * Back-compat convenience: create the doc and run generation to completion in one
+ * awaited call. Prefer `createScreenplayDraft` + a detached `runScreenplayGeneration`
+ * in request handlers so the HTTP response is never blocked for minutes.
+ *
+ * @param {Object} input
+ * @param {string} input.title
+ * @param {string} input.genre
+ * @param {string} input.synopsis
+ * @param {string} input.tone
+ * @param {string[]} input.themes
+ * @param {string} input.animationStyle
+ * @param {number} input.targetDurationMinutes
+ * @param {ObjectId[]} input.filmCharacterIds
+ * @param {ObjectId} input.workspaceId
+ * @param {ObjectId} input.projectId
+ * @param {ObjectId} input.createdBy
+ * @param {string} [input.jobId]
+ * @returns {Promise<Screenplay>} Saved Screenplay document
+ */
+export async function generateScreenplay(input) {
+  const draft = await createScreenplayDraft(input);
+  try {
+    await runScreenplayGeneration(draft._id, { jobId: input.jobId });
+  } catch {
+    // status + generationError are already persisted by runScreenplayGeneration
+  }
+  return Screenplay.findById(draft._id);
+}
+
+/**
  * Convert a saved Screenplay's scenes into Job Scene documents.
- * Called when the user starts production of a screenplay.
+ *
+ * NOT part of the production path any more: the directing step is the single
+ * writer of Scene documents (it opens with Scene.deleteMany and rebuilds them
+ * with 8-second beats and the continuity payload), so calling this first only
+ * created rows directing then deleted. Kept because it is the one place that
+ * maps per-scene `narration` onto a Scene, which the voice-over path will need.
  */
 export async function screenplayToScenes(screenplayId, jobId) {
   const screenplay = await Screenplay.findById(screenplayId);
@@ -330,4 +454,142 @@ export async function screenplayToScenes(screenplayId, jobId) {
   return saved;
 }
 
-export default { generateScreenplay, screenplayToScenes };
+/**
+ * Render a saved Screenplay back into screenplay text for the cinematic director.
+ *
+ * A screenplay-backed Job carries no `input.script` — the story lives in the
+ * Screenplay document. Without this the directing step decomposes an empty
+ * string and invents a film that has nothing to do with the screenplay the user
+ * approved. Everything the director needs to plan beats is emitted: the story
+ * bible, the cast with their locked appearances, the act structure, and every
+ * scene with its slugline, action, dialogue, mood and camera.
+ *
+ * @param {object} screenplay  a Screenplay document (or plain object)
+ * @returns {string}
+ */
+export function renderScreenplayForDirector(screenplay) {
+  if (!screenplay) return '';
+  const out = [];
+
+  out.push(`FILM: "${screenplay.title || 'Untitled'}"`);
+  out.push([
+    `GENRE: ${screenplay.genre || 'drama'}`,
+    `TONE: ${screenplay.tone || 'dramatic'}`,
+    `STYLE: ${screenplay.animationStyle || 'cinematic'}`,
+  ].join(' | '));
+  if (screenplay.themes?.length) out.push(`THEMES: ${screenplay.themes.join(', ')}`);
+  if (screenplay.synopsis)   out.push(`\nSYNOPSIS:\n${screenplay.synopsis}`);
+  if (screenplay.storyBible) out.push(`\nSTORY BIBLE:\n${screenplay.storyBible}`);
+
+  if (screenplay.characters?.length) {
+    out.push('\nCHARACTERS:');
+    for (const c of screenplay.characters) {
+      const bits = [c.arc ? `arc: ${c.arc}` : '', c.seedPrompt ? `appearance: ${c.seedPrompt}` : '']
+        .filter(Boolean).join(' | ');
+      out.push(`- ${c.name} (${c.role || 'supporting'})${bits ? ` — ${bits}` : ''}`);
+    }
+  }
+
+  // Scenes are emitted under their act so the director keeps the approved
+  // structure instead of re-cutting the film into acts of its own.
+  const acts = (screenplay.acts?.length ? screenplay.acts : [{ actNumber: 1, sceneStart: 1, sceneEnd: 1e9 }]);
+  const scenes = screenplay.scenes || [];
+
+  for (const act of acts) {
+    const title = act.title ? ` — "${act.title}"` : '';
+    out.push(`\n\nACT ${act.actNumber}${title} (scenes ${act.sceneStart}-${act.sceneEnd})`);
+    if (act.description) out.push(act.description);
+    if (act.emotion) out.push(`Dominant emotion: ${act.emotion}`);
+
+    const actScenes = scenes.filter(s => (s.act ?? act.actNumber) === act.actNumber);
+    for (const s of actScenes) {
+      out.push(`\nSCENE ${s.sceneNumber} — ${s.location || 'UNSPECIFIED LOCATION'} (${s.timeOfDay || 'day'})`);
+      if (s.characterNames?.length) out.push(`  CHARACTERS: ${s.characterNames.join(', ')}`);
+      if (s.actionDescription) out.push(`  ACTION (${s.actionType || 'other'}): ${s.actionDescription}`);
+      if (s.narration) out.push(`  NARRATION: ${s.narration}`);
+      for (const d of s.dialogue || []) {
+        if (d?.line) out.push(`  ${d.speaker || 'CHARACTER'}: "${d.line}"`);
+      }
+      out.push(`  MOOD: ${s.emotion || 'neutral'} (${s.intensity || 5}/10) | CAMERA: ${s.cameraType || 'medium_wide'} | TARGET: ${s.duration || 10}s`);
+    }
+  }
+
+  return out.join('\n');
+}
+
+/**
+ * Reset an existing Screenplay document to a clean `generating` state, reusing all
+ * original settings. Returns immediately — the caller fires `runScreenplayGeneration`
+ * detached. No new document is created.
+ *
+ * @param {Screenplay} existing - The existing Mongoose Screenplay document
+ * @returns {Promise<Screenplay>} the reset `generating` document
+ */
+export async function regenerateScreenplay(existing) {
+  return createScreenplayDraft({
+    title:                 existing.title,
+    genre:                 existing.genre,
+    synopsis:              existing.synopsis,
+    tone:                  existing.tone,
+    themes:                existing.themes,
+    animationStyle:        existing.animationStyle,
+    targetDurationMinutes: existing.targetDurationMinutes,
+    filmCharacterIds:      existing.characters
+      .filter(c => c.filmCharacterId)
+      .map(c => c.filmCharacterId),
+    additionalSettings:    existing.additionalSettings,
+    workspaceId:           existing.workspaceId,
+    projectId:             existing.projectId,
+    createdBy:             existing.createdBy,
+    // Reset this document in place instead of creating a new one.
+    _existingId:           existing._id,
+  });
+}
+
+/**
+ * Startup recovery for screenplays stranded mid-generation by a backend restart.
+ *
+ * PM2 runs exactly one `api` process, so any document still `generating` at boot
+ * is genuinely orphaned (no live run owns it) — safe to re-fire. Each re-fire is
+ * detached and bounded by MAX_GENERATION_ATTEMPTS (`runScreenplayGeneration` bumps
+ * the counter up-front), so a poison-pill screenplay lands on `draft` instead of
+ * looping forever across rapid dev restarts.
+ *
+ * @returns {Promise<number>} how many stuck screenplays were re-fired
+ */
+export async function recoverStuckScreenplays() {
+  const stuck = await Screenplay.find({ status: 'generating' });
+  if (stuck.length === 0) return 0;
+
+  console.log(`[ScreenplayService] Recovering ${stuck.length} stuck screenplay(s) after restart...`);
+
+  let resumed = 0;
+  for (const sp of stuck) {
+    if ((sp.generationAttempts || 0) >= MAX_GENERATION_ATTEMPTS) {
+      sp.status = 'draft';
+      sp.generationError = `Generation exceeded retry limit (${MAX_GENERATION_ATTEMPTS}) after restart`;
+      await sp.save();
+      emitScreenplayUpdate(sp, { status: 'draft', generationError: sp.generationError });
+      console.warn(`[ScreenplayService] Abandoning "${sp.title}" (${sp._id}) — over attempt cap`);
+      continue;
+    }
+    resumed += 1;
+    // Detached: recovery must not block server startup, and one failing screenplay
+    // must not stop the others from resuming.
+    runScreenplayGeneration(sp._id).catch(err =>
+      console.error(`[ScreenplayService] Recovery run failed for ${sp._id}:`, err.message)
+    );
+  }
+
+  return resumed;
+}
+
+export default {
+  createScreenplayDraft,
+  runScreenplayGeneration,
+  generateScreenplay,
+  regenerateScreenplay,
+  recoverStuckScreenplays,
+  screenplayToScenes,
+  renderScreenplayForDirector,
+};

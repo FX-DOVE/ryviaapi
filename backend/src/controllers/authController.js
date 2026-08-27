@@ -41,7 +41,7 @@ export async function register(req, res, next) {
     }
 
     // 1. Create User
-    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminEmail = process.env.ADMIN_EMAIL?.trim();
     const role = (adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) ? 'admin' : 'user';
     const user = new User({ name, email, password, role });
     await user.save();
@@ -94,7 +94,7 @@ export async function login(req, res, next) {
     }
 
     // Check if this user is the root admin configured in .env
-    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminEmail = process.env.ADMIN_EMAIL?.trim();
     if (adminEmail && user.email.toLowerCase() === adminEmail.toLowerCase() && user.role !== 'admin') {
       user.role = 'admin';
       await user.save();
@@ -185,4 +185,30 @@ export async function logout(req, res, next) {
   }
 }
 
-export default { register, login, refreshToken, logout };
+export async function getMe(req, res, next) {
+  try {
+    const user = await User.findById(req.user._id || req.user?.userId).select('-password -refreshTokens');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Check if this user matches process.env.ADMIN_EMAIL
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (adminEmail && user.email.toLowerCase() === adminEmail.toLowerCase() && user.role !== 'admin') {
+      user.role = 'admin';
+      await user.save();
+    }
+
+    res.json({
+      user: {
+        _id:               user._id,
+        name:              user.name,
+        email:             user.email,
+        role:              user.role,
+        activeWorkspaceId: user.activeWorkspaceId,
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export default { register, login, refreshToken, logout, getMe };

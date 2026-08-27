@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthLayout } from '../components/ui/AuthLayout';
 import { AppInput } from '../components/ui/AppInput';
@@ -11,6 +11,13 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      navigate('/app/film-studio', { replace: true });
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,7 +40,7 @@ export default function Register() {
       localStorage.setItem('refreshToken', data.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      navigate('/');
+      navigate('/app');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -44,8 +51,8 @@ export default function Register() {
   return (
     <AuthLayout title="Create Account" subtitle="Start your cinematic journey">
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-[var(--accent-red)] p-4 rounded-[var(--radius-md)] mb-6 text-sm flex items-center gap-3 animation-fade-in">
-          <span className="text-lg">⚠️</span> {error}
+        <div className="alert alert-error">
+          <span style={{ fontSize: '1.125rem' }}>⚠️</span> {error}
         </div>
       )}
 

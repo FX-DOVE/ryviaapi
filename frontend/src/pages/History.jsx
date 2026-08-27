@@ -9,6 +9,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { AppButton } from '../components/ui/AppButton';
 import { AppInput } from '../components/ui/AppInput';
 import { EmptyState } from '../components/ui/EmptyState';
+import { useConfirm } from '../components/ui/ConfirmDialog';
 
 const STATUS_FILTERS = ['all', 'queued', 'media_generation', 'completed', 'failed'];
 
@@ -18,6 +19,7 @@ export default function History() {
   const [search,  setSearch]  = useState('');
   const [page,    setPage]    = useState(1);
   const [loading, setLoading] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
 
   const fetchJobs = async (p = 1, status = filter) => {
     setLoading(true);
@@ -39,7 +41,12 @@ export default function History() {
   }, [filter]);
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this job and all its files permanently?')) return;
+    const ok = await confirm({
+      title: 'Delete job?',
+      message: 'This permanently deletes the job and all its files. This cannot be undone.',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
     try {
       await deleteJob(id);
       removeJob(id);
@@ -67,7 +74,9 @@ export default function History() {
             <AppButton
               key={s}
               variant={filter === s ? 'primary' : 'secondary'}
+              size="sm"
               onClick={() => setFilter(s)}
+              className="btn-inline"
             >
               {s === 'all' ? 'All' : s.replace(/_/g, ' ')}
             </AppButton>
@@ -87,8 +96,8 @@ export default function History() {
 
       {/* Grid */}
       {loading ? (
-        <div className="flex justify-center items-center py-20 text-[var(--text-muted)]">
-          <div className="spinner w-8 h-8 border-2 border-[var(--border-default)] border-t-[var(--brand-primary)] rounded-full animate-spin"></div>
+        <div className="flex justify-center items-center py-20">
+          <div className="spinner w-8 h-8 border-[3px]" />
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState 
@@ -130,6 +139,7 @@ export default function History() {
           </AppButton>
         </div>
       )}
+      {confirmDialog}
     </AppPage>
   );
 }

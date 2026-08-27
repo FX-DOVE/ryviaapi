@@ -3,10 +3,12 @@ import useAppStore from '../store/useAppStore';
 import { addCharacter, deleteCharacter } from '../api/projects';
 import { AppInput } from './ui/AppInput';
 import { AppButton } from './ui/AppButton';
+import { useConfirm } from './ui/ConfirmDialog';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 export default function CharacterLibrary({ characters, setCharacters }) {
   const { addToast } = useAppStore();
+  const { confirm, confirmDialog } = useConfirm();
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
@@ -51,7 +53,12 @@ export default function CharacterLibrary({ characters, setCharacters }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this character?')) return;
+    const ok = await confirm({
+      title: 'Delete character?',
+      message: 'This removes the character and its reference photo from the library. This cannot be undone.',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
     try {
       await deleteCharacter(id);
       setCharacters(characters.filter(c => c._id !== id));
@@ -151,6 +158,7 @@ export default function CharacterLibrary({ characters, setCharacters }) {
           ))}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

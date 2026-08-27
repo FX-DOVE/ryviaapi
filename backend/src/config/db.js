@@ -9,23 +9,44 @@ export async function connectDB() {
 
   mongoose.set('strictQuery', true);
 
-  await mongoose.connect(uri, {
-    maxPoolSize: 10,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-  });
+  const maxRetries = 10;
+  const retryInterval = 5000; // 5 seconds
+  let retries = 0;
 
-  isConnected = true;
-  console.log('[DB] MongoDB connected:', uri);
+  while (retries < maxRetries) {
+    try {
+      console.log(`[DB] Connecting to MongoDB (attempt ${retries + 1}/${maxRetries})...`);
+      await mongoose.connect(uri, {
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+      });
 
-  mongoose.connection.on('disconnected', () => {
-    isConnected = false;
-    console.warn('[DB] MongoDB disconnected — will reconnect automatically');
-  });
+      isConnected = true;
+      console.log('[DB] MongoDB connected:', uri);
 
-  mongoose.connection.on('error', (err) => {
-    console.error('[DB] MongoDB error:', err.message);
-  });
+      mongoose.connection.on('disconnected', () => {
+        isConnected = false;
+        console.warn('[DB] MongoDB disconnected — will reconnect automatically');
+      });
+
+      mongoose.connection.on('error', (err) => {
+        console.error('[DB] MongoDB error:', err.message);
+      });
+
+      return; // Connected successfully
+    } catch (err) {
+      retries++;
+      console.warn(`[DB] ⚠️ MongoDB connection attempt ${retries} failed (${uri}): ${err.message}`);
+      if (retries < maxRetries) {
+        console.log(`[DB] Retrying in ${retryInterval / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, retryInterval));
+      } else {
+        console.error(`[DB] ❌ MongoDB connection failed after ${maxRetries} attempts.`);
+        throw err;
+      }
+    }
+  }
 }
 
 export default connectDB;

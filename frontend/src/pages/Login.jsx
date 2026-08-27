@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthLayout } from '../components/ui/AuthLayout';
 import { AppInput } from '../components/ui/AppInput';
@@ -10,6 +10,13 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      navigate('/app/film-studio', { replace: true });
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,7 +39,7 @@ export default function Login() {
       localStorage.setItem('refreshToken', data.refreshToken);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      navigate('/');
+      navigate('/app');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -43,8 +50,8 @@ export default function Login() {
   return (
     <AuthLayout title="Welcome Back" subtitle="Log in to your workspace">
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-[var(--accent-red)] p-4 rounded-[var(--radius-md)] mb-6 text-sm flex items-center gap-3 animation-fade-in">
-          <span className="text-lg">⚠️</span> {error}
+        <div className="alert alert-error">
+          <span style={{ fontSize: '1.125rem' }}>⚠️</span> {error}
         </div>
       )}
 
@@ -60,7 +67,8 @@ export default function Login() {
 
         <div className="relative">
           <div className="absolute right-0 top-0">
-            <a href="#" className="text-xs font-medium text-[var(--brand-light)] hover:text-white transition-colors mt-1 block">Forgot password?</a>
+          {/* Forgot password: UI placeholder only — backend not yet implemented */}
+          <a href="#" className="text-xs font-medium text-[var(--brand-light)] hover:text-[var(--text-primary)] transition-colors mt-1 block" onClick={(e) => e.preventDefault()} title="Coming soon">Forgot password?</a>
           </div>
           <AppInput
             label="Password"

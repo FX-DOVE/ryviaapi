@@ -93,6 +93,13 @@ const screenplaySchema = new mongoose.Schema(
       enum: ['draft', 'generating', 'ready', 'in_production', 'completed'],
       default: 'draft'
     },
+
+    // Resumable generation bookkeeping. `generationAttempts` is bumped each time
+    // generation starts so startup recovery can abandon a poison-pill screenplay
+    // instead of re-running it forever across restarts; `generationError` carries
+    // the last failure message to the draft/retry view.
+    generationAttempts: { type: Number, default: 0 },
+    generationError:     { type: String, default: '' },
   },
   { timestamps: true }
 );

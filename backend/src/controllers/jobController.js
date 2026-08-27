@@ -8,71 +8,11 @@ import JobLog from '../models/JobLog.js';
 import User   from '../models/User.js';
 import Workspace from '../models/Workspace.js';
 
-import { enqueueScriptJob }  from '../queues/queueManager.js';
+import { startJobPipeline } from '../services/executionEngine.js';
 import { createJobDirs, deleteJobFiles } from '../services/storageService.js';
 import { setJobSignal, clearJobSignal } from '../services/jobControlService.js';
-import { JOB_STATUS, SCENE_STATUS }       from '../config/constants.js';
+import { JOB_STATUS, SCENE_STATUS, charLockDir, envLockDir } from '../config/constants.js';
 
-// ─── SCENE ASSET STREAMING ───────────────────────────────────────────────────
-
-/**
- * Stream a scene image file directly from disk.
- * GET /api/jobs/:id/scenes/:sceneId/image
- */
-export async function streamSceneImage(req, res, next) {
-  try {
-    const scene = await Scene.findOne({ _id: req.params.sceneId, jobId: req.params.id });
-    if (!scene?.imagePath)       return res.status(404).json({ error: 'Scene image not available' });
-    if (!fs.existsSync(scene.imagePath)) return res.status(404).json({ error: 'Image file missing from storage' });
-
-    const ext = path.extname(scene.imagePath).toLowerCase();
-    const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
-
-    res.setHeader('Content-Type', mime);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    fs.createReadStream(scene.imagePath).pipe(res);
-  } catch (err) {
-    next(err);
-  }
-}
-
-/**
- * Stream a scene video clip directly from disk.
- * GET /api/jobs/:id/scenes/:sceneId/video
- */
-export async function streamSceneVideo(req, res, next) {
-  try {
-    const scene = await Scene.findOne({ _id: req.params.sceneId, jobId: req.params.id });
-    if (!scene?.videoPath)       return res.status(404).json({ error: 'Scene video not available' });
-    if (!fs.existsSync(scene.videoPath)) return res.status(404).json({ error: 'Video file missing from storage' });
-
-    const stat     = fs.statSync(scene.videoPath);
-    const fileSize = stat.size;
-    const range    = req.headers.range;
-
-    if (range) {
-      const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(startStr, 10);
-      const end   = endStr ? parseInt(endStr, 10) : fileSize - 1;
-      res.writeHead(206, {
-        'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
-        'Accept-Ranges':  'bytes',
-        'Content-Length': end - start + 1,
-        'Content-Type':   'video/mp4',
-      });
-      fs.createReadStream(scene.videoPath, { start, end }).pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Length': fileSize,
-        'Content-Type':   'video/mp4',
-        'Accept-Ranges':  'bytes',
-      });
-      fs.createReadStream(scene.videoPath).pipe(res);
-    }
-  } catch (err) {
-    next(err);
-  }
-}
 
 // ─── CREATE JOB ──────────────────────────────────────────────────────────────
 export async function createJob(req, res, next) {
@@ -147,8 +87,10 @@ export async function createJob(req, res, next) {
     // Move uploaded files to job-specific input dir
     await createJobDirs(jobId);
 
-    // Enqueue
-    await enqueueScriptJob(jobId);
+    // Enqueue the full film pipeline. startJobPipeline records workflow.steps,
+    // which is what triggerNextStep walks — enqueueing the script step alone
+    // would run analysis and then stop.
+    await startJobPipeline(jobId);
 
     // Increment user job count
     await User.findByIdAndUpdate(userId, { $inc: { totalJobs: 1 } });
@@ -190,7 +132,46 @@ export async function getJobDetail(req, res, next) {
   try {
     const job = await Job.findOne({ _id: req.params.id, userId: req.user._id });
     if (!job) return res.status(404).json({ error: 'Job not found' });
-    res.json(job);
+
+    const jobObj = job.toObject();
+    jobObj.characterLocks = { ...(jobObj.characterLocks || {}) };
+    jobObj.environmentLocks = { ...(jobObj.environmentLocks || {}) };
+
+    // Auto-discover existing character lock files on disk
+    try {
+      const cDir = charLockDir(req.params.id);
+      if (fs.existsSync(cDir)) {
+        const files = fs.readdirSync(cDir);
+        for (const file of files) {
+          if (file.endsWith('.jpg') || file.endsWith('.png')) {
+            const rawName = file.replace(/_reference\.(jpg|png)$/i, '').replace(/\.(jpg|png)$/i, '');
+            const fullPath = path.join(cDir, file);
+            if (!jobObj.characterLocks[rawName]) {
+              jobObj.characterLocks[rawName] = { referenceImagePath: fullPath };
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // Auto-discover existing environment lock files on disk
+    try {
+      const eDir = envLockDir(req.params.id);
+      if (fs.existsSync(eDir)) {
+        const files = fs.readdirSync(eDir);
+        for (const file of files) {
+          if (file.endsWith('.jpg') || file.endsWith('.png')) {
+            const rawName = file.replace(/_reference\.(jpg|png)$/i, '').replace(/\.(jpg|png)$/i, '');
+            const fullPath = path.join(eDir, file);
+            if (!jobObj.environmentLocks[rawName]) {
+              jobObj.environmentLocks[rawName] = { referenceImagePath: fullPath };
+            }
+          }
+        }
+      }
+    } catch {}
+
+    res.json(jobObj);
   } catch (err) {
     next(err);
   }
@@ -329,17 +310,19 @@ export async function resumeJob(req, res, next) {
     const job = await Job.findOne({ _id: req.params.id, userId: req.user._id });
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
-    if (job.status !== JOB_STATUS.STOPPED) {
-      return res.status(400).json({ error: 'Only stopped jobs can be resumed' });
+    const resumable = [JOB_STATUS.STOPPED, 'cancelled', JOB_STATUS.FAILED];
+    if (!resumable.includes(job.status)) {
+      return res.status(400).json({ error: `Cannot resume job in ${job.status} state` });
     }
 
-    // Clear any lingering stop signals
+    // Clear any lingering stop signals & errors
     await clearJobSignal(job._id);
-
+    job.error = null;
+    job.failureReason = null;
     job.status = JOB_STATUS.QUEUED;
     await job.save();
 
-    await enqueueScriptJob(String(job._id));
+    await startJobPipeline(String(job._id));
 
     res.json({ message: 'Job resumed successfully', status: JOB_STATUS.QUEUED });
   } catch (err) {
@@ -369,7 +352,7 @@ export async function retryJob(req, res, next) {
     await job.save();
 
     await clearJobSignal(job._id);
-    await enqueueScriptJob(String(job._id));
+    await startJobPipeline(String(job._id));
 
     res.json({ message: 'Job queued for retry', status: JOB_STATUS.QUEUED });
   } catch (err) {
@@ -405,7 +388,7 @@ export async function retryScene(req, res, next) {
       await job.save();
 
       await clearJobSignal(job._id);
-      await enqueueScriptJob(String(job._id));
+      await startJobPipeline(String(job._id));
     }
 
     res.json({ 
@@ -458,3 +441,161 @@ export async function deleteJob(req, res, next) {
     next(err);
   }
 }
+
+// ─── STREAM SCENE IMAGE ──────────────────────────────────────────────────────
+export async function streamSceneImage(req, res, next) {
+  try {
+    const scene = await Scene.findOne({ _id: req.params.sceneId, jobId: req.params.id });
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    let imagePath = scene.imagePath || scene.segments?.[0]?.keyframePath;
+    if (!imagePath || !fs.existsSync(imagePath)) {
+      return res.status(404).json({ error: 'Scene image not available' });
+    }
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    fs.createReadStream(imagePath).pipe(res);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── STREAM SCENE VIDEO ──────────────────────────────────────────────────────
+export async function streamSceneVideo(req, res, next) {
+  try {
+    const scene = await Scene.findOne({ _id: req.params.sceneId, jobId: req.params.id });
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    let videoPath = scene.videoPath || scene.segments?.[0]?.videoPath;
+    if (!videoPath || !fs.existsSync(videoPath)) {
+      return res.status(404).json({ error: 'Scene video not available' });
+    }
+
+    const stat = fs.statSync(videoPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': 'video/mp4',
+      });
+      fs.createReadStream(videoPath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4',
+        'Accept-Ranges': 'bytes',
+      });
+      fs.createReadStream(videoPath).pipe(res);
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── STREAM CHARACTER LOCK IMAGE ─────────────────────────────────────────────
+export async function streamCharacterLockImage(req, res, next) {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const charName = decodeURIComponent(req.params.characterName);
+    const safeName = charName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+
+    // Check DB first
+    const locks = job.characterLocks || {};
+    const lock = locks[charName] || locks[charName.toLowerCase()] || locks[charName.replace(/_/g, ' ')] || locks[safeName];
+    let filePath = lock?.referenceImagePath;
+
+    // If not found in DB, check disk directly
+    if (!filePath || !fs.existsSync(filePath)) {
+      const cDir = charLockDir(req.params.id);
+      const candidates = [
+        path.join(cDir, `${safeName}_reference.jpg`),
+        path.join(cDir, `${safeName}_reference.png`),
+        path.join(cDir, `${safeName}.jpg`),
+        path.join(cDir, `${safeName}.png`),
+      ];
+      filePath = candidates.find(p => fs.existsSync(p));
+
+      if (!filePath && fs.existsSync(cDir)) {
+        const files = fs.readdirSync(cDir);
+        const match = files.find(f => {
+          const lower = f.toLowerCase();
+          const cleanName = safeName.replace(/^the_/, '');
+          return lower.includes(safeName) || lower.includes(cleanName) || safeName.includes(f.split('_')[0]);
+        });
+        if (match) filePath = path.join(cDir, match);
+      }
+    }
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Character reference image not found' });
+    }
+
+    const mime = filePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── STREAM ENVIRONMENT LOCK IMAGE ───────────────────────────────────────────
+export async function streamEnvironmentLockImage(req, res, next) {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const locId = decodeURIComponent(req.params.locationId);
+    const safeName = locId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+
+    // Check DB first
+    const locks = job.environmentLocks || {};
+    const lock = locks[locId] || locks[locId.toLowerCase()] || locks[locId.replace(/_/g, ' ')] || locks[safeName];
+    let filePath = lock?.referenceImagePath;
+
+    // If not found in DB, check disk directly
+    if (!filePath || !fs.existsSync(filePath)) {
+      const eDir = envLockDir(req.params.id);
+      const candidates = [
+        path.join(eDir, `${safeName}_reference.jpg`),
+        path.join(eDir, `${safeName}_reference.png`),
+        path.join(eDir, `${safeName}.jpg`),
+        path.join(eDir, `${safeName}.png`),
+      ];
+      filePath = candidates.find(p => fs.existsSync(p));
+
+      if (!filePath && fs.existsSync(eDir)) {
+        const files = fs.readdirSync(eDir);
+        const match = files.find(f => {
+          const lower = f.toLowerCase();
+          return lower.includes(safeName) || safeName.includes(f.split('_')[0]);
+        });
+        if (match) filePath = path.join(eDir, match);
+      }
+    }
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Environment reference image not found' });
+    }
+
+    const mime = filePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    next(err);
+  }
+}
+

@@ -121,9 +121,21 @@ export async function deleteFromCloud(destKey) {
   return s3Storage.deleteFile(destKey);
 }
 
+/**
+ * Generate a fresh short-lived signed URL for a stored key.
+ * Falls back gracefully if the provider doesn't support presigning.
+ */
+export async function getSignedUrl(destKey, expiresInSeconds = 3600) {
+  if (typeof s3Storage.getSignedUrl === 'function') {
+    return s3Storage.getSignedUrl(destKey, expiresInSeconds);
+  }
+  // Fallback: return a long-lived download URL
+  return s3Storage.getDownloadUrl(destKey);
+}
+
 export default {
   createJobDirs, deleteJobFiles, deleteTempFiles,
   getJobStorageSize, isQuotaExceeded, getFileSize,
-  uploadToCloud, getCloudUrl, deleteFromCloud,
+  uploadToCloud, getCloudUrl, getSignedUrl, deleteFromCloud,
 };
 

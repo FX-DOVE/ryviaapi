@@ -1,20 +1,31 @@
-import { getProvider } from '../providerFactory.js';
+import { QwenImageProvider } from './QwenImageProvider.js';
+
+const _instance = new QwenImageProvider();
 
 export class ImageProvider {
   /**
-   * Factory method to load an image generation adapter.
-   * Supports 'grok', 'local-gpu', 'flux', 'stable-diffusion', etc.
-   * @param {string} providerName  The adapter name
-   * @param {string} [version]     Version identifier (e.g. 'v1', 'v2', 'xl')
+   * Get the image generation adapter (Qwen-Image on Runpod).
+   *
+   * `edit` is the continuity primitive: it takes up to 3 reference images
+   * (previous frame, character lock sheet, environment lock sheet) and applies
+   * an instruction, inheriting the source dimensions.
+   *
+   * @returns {{ generate: Function, imageToImage: Function, edit: Function }}
    */
-  static getAdapter(providerName = 'grok', version = 'v1') {
-    const base = getProvider(providerName);
+  static getAdapter() {
     return {
-      generate: async (prompt, outputPath, options = {}) => {
-        console.log(`[ImageProvider] Generating image via ${providerName} (${version})...`);
-        return base.generateImage(prompt, outputPath);
-      }
+      generate: async (prompt, outputPath, options = {}) =>
+        _instance.generateImage(prompt, outputPath, options),
+      imageToImage: async (referenceImagePath, prompt, outputPath, options = {}) =>
+        _instance.imageToImage(referenceImagePath, prompt, outputPath, options),
+      edit: async (references, prompt, outputPath, options = {}) =>
+        _instance.editImage(references, prompt, outputPath, options),
     };
+  }
+
+  /** Get the raw QwenImageProvider instance for direct access. */
+  static getInstance() {
+    return _instance;
   }
 }
 

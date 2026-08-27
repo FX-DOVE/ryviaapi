@@ -5,11 +5,22 @@ import useAppStore from '../store/useAppStore';
 let _socket = null;
 
 function getSocket() {
+  const token = localStorage.getItem('accessToken');
+  const authHeader = token ? `Bearer ${token}` : null;
+
   if (!_socket) {
     _socket = io('/', {
       transports: ['websocket', 'polling'],
       autoConnect: true,
+      auth: { token: authHeader }
     });
+  } else if (_socket.auth?.token !== authHeader) {
+    _socket.auth = { token: authHeader };
+    if (_socket.connected) {
+      _socket.disconnect().connect();
+    } else if (authHeader) {
+      _socket.connect();
+    }
   }
   return _socket;
 }
@@ -25,6 +36,7 @@ export function useSocketGlobal() {
     const socket = getSocket();
 
     socket.on('connect',    () => console.log('[Socket] Connected:', socket.id));
+    socket.on('connect_error', (err) => console.warn('[Socket] Connection warning:', err.message));
     socket.on('disconnect', () => console.log('[Socket] Disconnected'));
 
     // Global job events — update the jobs list regardless of which page we're on
@@ -95,4 +107,41 @@ export function useJobSocket(jobId) {
 }
 
 
-export default { useSocketGlobal, useJobSocket };
+/**
+ * Hook to subscribe to a single screenplay's live generation updates.
+ *
+ * The server emits `screenplay_updated` to the workspace room (auto-joined on
+ * connect) at each milestone — bible ready, per-act scene batches, final ready,
+ * and generation failure. Payload: `{ screenplayId, status, stage?, acts?,
+ * scenesSoFar?, totalScenesTarget?, generationError? }`.
+ *
+ * @param {string} screenplayId
+ * @param {(payload: object) => void} onUpdate  called with the full patch payload
+ */
+export function useScreenplaySocket(screenplayId, onUpdate) {
+  // Keep the latest callback in a ref so the socket listener isn't re-bound on
+  // every render (only when the screenplayId changes).
+  const cbRef = useRef(onUpdate);
+  cbRef.current = onUpdate;
+
+  useEffect(() => {
+    if (!screenplayId) return;
+
+    const socket = getSocket();
+
+    const onScreenplayUpdate = (payload) => {
+      if (payload?.screenplayId === screenplayId) {
+        cbRef.current?.(payload);
+      }
+    };
+
+    socket.on('screenplay_updated', onScreenplayUpdate);
+
+    return () => {
+      socket.off('screenplay_updated', onScreenplayUpdate);
+    };
+  }, [screenplayId]);
+}
+
+
+export default { useSocketGlobal, useJobSocket, useScreenplaySocket };

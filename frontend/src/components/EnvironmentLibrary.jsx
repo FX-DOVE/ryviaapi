@@ -3,10 +3,12 @@ import useAppStore from '../store/useAppStore';
 import { addEnvironment, deleteEnvironment } from '../api/projects';
 import { AppInput } from './ui/AppInput';
 import { AppButton } from './ui/AppButton';
+import { useConfirm } from './ui/ConfirmDialog';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 export default function EnvironmentLibrary({ environments, setEnvironments }) {
   const { addToast } = useAppStore();
+  const { confirm, confirmDialog } = useConfirm();
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -45,7 +47,12 @@ export default function EnvironmentLibrary({ environments, setEnvironments }) {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this environment?')) return;
+    const ok = await confirm({
+      title: 'Delete environment?',
+      message: 'This removes the environment and its reference photos from the library. This cannot be undone.',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
     try {
       await deleteEnvironment(id);
       setEnvironments(environments.filter(e => e._id !== id));
@@ -142,6 +149,7 @@ export default function EnvironmentLibrary({ environments, setEnvironments }) {
           ))}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 120000,
 });
 
 // Request Interceptor: Attach access token
@@ -53,6 +53,10 @@ export const retryScene    = (id, sceneId) => api.post(`/jobs/${id}/scenes/${sce
 
 export const getVideoStreamUrl    = (id) => `/api/jobs/${id}/stream`;
 export const getThumbnailUrl      = (id) => `/api/jobs/${id}/thumbnail`;
+export const getSceneImageUrl     = (jobId, sceneId) => `/api/jobs/${jobId}/scenes/${sceneId}/image`;
+export const getSceneVideoUrl     = (jobId, sceneId) => `/api/jobs/${jobId}/scenes/${sceneId}/video`;
+export const getCharacterLockImageUrl = (jobId, charName) => `/api/jobs/${jobId}/characters/${encodeURIComponent(charName)}/image`;
+export const getEnvironmentLockImageUrl = (jobId, locId) => `/api/jobs/${jobId}/environments/${encodeURIComponent(locId)}/image`;
 
 // ─── USER ─────────────────────────────────────────────────────────────────
 export const getMe = () => api.get('/users/me');
