@@ -11,7 +11,7 @@ import Workspace from '../models/Workspace.js';
 import { startJobPipeline } from '../services/executionEngine.js';
 import { createJobDirs, deleteJobFiles } from '../services/storageService.js';
 import { setJobSignal, clearJobSignal } from '../services/jobControlService.js';
-import { JOB_STATUS, SCENE_STATUS, charLockDir, envLockDir } from '../config/constants.js';
+import { JOB_STATUS, SCENE_STATUS, charLockDir, envLockDir, sceneImgDir, sceneVidDir, segmentDir } from '../config/constants.js';
 
 
 // ─── CREATE JOB ──────────────────────────────────────────────────────────────
@@ -207,7 +207,57 @@ export async function getJobLogs(req, res, next) {
 export async function getJobScenes(req, res, next) {
   try {
     const scenes = await Scene.find({ jobId: req.params.id }).sort({ sceneNumber: 1 });
-    res.json(scenes);
+    const imgDir = sceneImgDir(req.params.id);
+    const segDir = segmentDir(req.params.id);
+    const vidDir = sceneVidDir(req.params.id);
+
+    const enrichedScenes = scenes.map(s => {
+      const sceneObj = s.toObject();
+      const numStr = String(s.sceneNumber).padStart(4, '0');
+
+      // Auto-discover keyframe on disk if not saved in DB
+      if (!sceneObj.imagePath) {
+        const candidateImg = path.join(imgDir, `scene_${numStr}_seg_01_keyframe.jpg`);
+        if (fs.existsSync(candidateImg)) {
+          sceneObj.imagePath = candidateImg;
+        }
+      }
+
+      // Auto-discover video on disk if not saved in DB
+      if (!sceneObj.videoPath) {
+        const stitchedVid = path.join(vidDir, `scene_${numStr}.mp4`);
+        const firstSegVid = path.join(segDir, `scene_${numStr}_seg_01.mp4`);
+        if (fs.existsSync(stitchedVid)) {
+          sceneObj.videoPath = stitchedVid;
+          sceneObj.status = 'completed';
+        } else if (fs.existsSync(firstSegVid)) {
+          sceneObj.videoPath = firstSegVid;
+          sceneObj.status = 'generating';
+        }
+      }
+
+      // Auto-discover segments on disk
+      if (!sceneObj.segments || sceneObj.segments.length === 0) {
+        try {
+          if (fs.existsSync(segDir)) {
+            const files = fs.readdirSync(segDir).filter(f => f.startsWith(`scene_${numStr}_seg_`) && f.endsWith('.mp4'));
+            if (files.length > 0) {
+              sceneObj.segments = files.map((f, idx) => ({
+                segmentNumber: idx + 1,
+                videoPath: path.join(segDir, f),
+                keyframePath: path.join(imgDir, `scene_${numStr}_seg_${String(idx + 1).padStart(2, '0')}_keyframe.jpg`),
+                status: 'done',
+              }));
+              if (sceneObj.status === 'pending') sceneObj.status = 'generating';
+            }
+          }
+        } catch {}
+      }
+
+      return sceneObj;
+    });
+
+    res.json(enrichedScenes);
   } catch (err) {
     next(err);
   }
@@ -450,6 +500,14 @@ export async function streamSceneImage(req, res, next) {
 
     let imagePath = scene.imagePath || scene.segments?.[0]?.keyframePath;
     if (!imagePath || !fs.existsSync(imagePath)) {
+      const numStr = String(scene.sceneNumber).padStart(4, '0');
+      const candidateImg = path.join(sceneImgDir(req.params.id), `scene_${numStr}_seg_01_keyframe.jpg`);
+      if (fs.existsSync(candidateImg)) {
+        imagePath = candidateImg;
+      }
+    }
+
+    if (!imagePath || !fs.existsSync(imagePath)) {
       return res.status(404).json({ error: 'Scene image not available' });
     }
 
@@ -468,6 +526,17 @@ export async function streamSceneVideo(req, res, next) {
     if (!scene) return res.status(404).json({ error: 'Scene not found' });
 
     let videoPath = scene.videoPath || scene.segments?.[0]?.videoPath;
+    if (!videoPath || !fs.existsSync(videoPath)) {
+      const numStr = String(scene.sceneNumber).padStart(4, '0');
+      const stitchedVid = path.join(sceneVidDir(req.params.id), `scene_${numStr}.mp4`);
+      const firstSegVid = path.join(segmentDir(req.params.id), `scene_${numStr}_seg_01.mp4`);
+      if (fs.existsSync(stitchedVid)) {
+        videoPath = stitchedVid;
+      } else if (fs.existsSync(firstSegVid)) {
+        videoPath = firstSegVid;
+      }
+    }
+
     if (!videoPath || !fs.existsSync(videoPath)) {
       return res.status(404).json({ error: 'Scene video not available' });
     }
