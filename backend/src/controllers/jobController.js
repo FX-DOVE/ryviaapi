@@ -360,7 +360,7 @@ export async function resumeJob(req, res, next) {
     const job = await Job.findOne({ _id: req.params.id, userId: req.user._id });
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
-    const resumable = [JOB_STATUS.STOPPED, 'cancelled', JOB_STATUS.FAILED];
+    const resumable = [JOB_STATUS.STOPPED, 'cancelled', JOB_STATUS.FAILED, JOB_STATUS.SEGMENT_GENERATION, 'locking'];
     if (!resumable.includes(job.status)) {
       return res.status(400).json({ error: `Cannot resume job in ${job.status} state` });
     }

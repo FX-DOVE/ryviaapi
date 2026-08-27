@@ -1,20 +1,32 @@
 import Job from '../models/Job.js';
 import queueManager from '../queues/queueManager.js';
-import { FILM_PIPELINE_STEPS } from '../config/constants.js';
+import { FILM_PIPELINE_STEPS, SCREENPLAY_PIPELINE_STEPS } from '../config/constants.js';
 
 /**
  * Start a job's pipeline.
  *
- * The only supported way to kick a job off. `triggerNextStep()` advances by
- * looking the current step up in `job.workflow.steps`, so a job enqueued
- * without that list runs its first step and then silently stops — which is
- * exactly what used to happen, since nothing ever wrote the field.
+ * Automatically detects screenplay-backed jobs and existing progress
+ * to resume from the correct step (e.g. segment_generation).
  *
  * @param {string} jobId
- * @param {string[]} [steps]  defaults to the full film pipeline
+ * @param {string[]} [steps]  custom pipeline plan or auto-detected
  */
-export async function startJobPipeline(jobId, steps = FILM_PIPELINE_STEPS) {
-  const plan = Array.isArray(steps) && steps.length ? [...steps] : [...FILM_PIPELINE_STEPS];
+export async function startJobPipeline(jobId, steps = null) {
+  const job = await Job.findById(jobId);
+  if (!job) throw new Error(`Job ${jobId} not found`);
+
+  let plan = steps;
+  if (!plan || !Array.isArray(plan) || plan.length === 0) {
+    if (job.directorPlan?.acts?.length && Object.keys(job.characterLocks || {}).length > 0) {
+      // Directing and consistency locks already completed! Start directly at segment_generation
+      plan = ['segment_generation', 'rendering', 'upload', 'notify'];
+    } else if (job.screenplayId) {
+      plan = [...SCREENPLAY_PIPELINE_STEPS];
+    } else {
+      plan = [...FILM_PIPELINE_STEPS];
+    }
+  }
+
   const firstId = typeof plan[0] === 'string' ? plan[0] : plan[0]?.id;
   if (!firstId) throw new Error(`[ExecutionEngine] Job ${jobId} given an unusable pipeline plan`);
 
@@ -25,10 +37,6 @@ export async function startJobPipeline(jobId, steps = FILM_PIPELINE_STEPS) {
 
   console.log(`[ExecutionEngine] Job ${jobId} pipeline: ${plan.map(s => s.id || s).join(' → ')}`);
 
-  // Dispatch through triggerNextStep with no current step: it resolves steps[0]
-  // and routes it through the same switch every later step uses. Enqueueing the
-  // script step directly would break any plan that starts elsewhere — which is
-  // exactly what a screenplay-backed job needs, since it has no raw script.
   await triggerNextStep(jobId, null);
 }
 
