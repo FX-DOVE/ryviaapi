@@ -166,7 +166,99 @@ async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = 
 }
 
 /**
- * Generate all video segments for a single scene.
+ * PHASE 1: Pre-generate all scene anchor keyframes in one uninterrupted batch.
+ *
+ * This keeps the Qwen Image GPU worker warm across all scenes, avoiding
+ * cold-start timeouts between video rendering steps.
+ *
+ * @param {object} params
+ * @param {string} params.jobId
+ * @param {Array}  params.scenes             Mongoose scene documents
+ * @param {object} params.directorPlan
+ * @param {object} params.characterLocks
+ * @param {object} params.environmentLocks
+ * @param {string} params.animationStyle
+ * @param {Function} [params.onKeyframeReady] callback(sceneDoc, keyframePath)
+ */
+export async function pregenerateAllSceneKeyframes({
+  jobId, scenes, directorPlan, characterLocks = {},
+  environmentLocks = {}, animationStyle = 'cinematic',
+  onKeyframeReady = null,
+}) {
+  const imgDir = sceneImgDir(jobId);
+  await fs.promises.mkdir(imgDir, { recursive: true });
+
+  const { locks: charLocks, prompts: charLockPrompts } = normalizeCharacterLocks(characterLocks);
+
+  console.log(`[SegmentGenerator] 🎨 Phase 1: Pre-generating keyframes for ${scenes.length} scene(s)...`);
+
+  for (let s = 0; s < scenes.length; s++) {
+    const sceneDoc = scenes[s];
+    const sceneNum = String(sceneDoc.sceneNumber).padStart(4, '0');
+    const segmentId = `scene_${sceneNum}_seg_01`;
+    const keyframePath = path.join(imgDir, `${segmentId}_keyframe.jpg`);
+
+    // If keyframe already exists on disk, skip to save time
+    if (fs.existsSync(keyframePath)) {
+      console.log(`[SegmentGenerator] Scene ${sceneNum} keyframe already exists: ${keyframePath}`);
+      if (onKeyframeReady) await onKeyframeReady(sceneDoc, keyframePath);
+      continue;
+    }
+
+    // Match plan scene & act
+    let planScene = null;
+    for (const act of directorPlan.acts || []) {
+      planScene = (act.scenes || []).find(sc => sc.globalSceneNumber === sceneDoc.sceneNumber);
+      if (planScene) {
+        planScene._act = act;
+        break;
+      }
+    }
+
+    const envLockRaw = environmentLocks[sceneDoc.locationId] || environmentLocks[planScene?.locationId] || '';
+    const envLock = normalizeLock(envLockRaw);
+    const envPlate = existingPath(envLock.referenceImagePath);
+
+    const firstBeat = sceneDoc.beats?.[0] || planScene?.beats?.[0] || {
+      beatNumber: 1,
+      strategy: 'anchor',
+      action: sceneDoc.description || planScene?.summary || 'Scene establishing shot',
+      cameraAngle: 'wide',
+    };
+
+    const sceneData = {
+      ...sceneDoc.toObject(),
+      characterNames: sceneDoc.characters || planScene?.characters || [],
+    };
+
+    const { imagePrompt } = buildBeatPrompts(
+      firstBeat, sceneData, planScene?._act || { actNumber: 1 },
+      charLockPrompts, envLock.lockPrompt, animationStyle,
+    );
+
+    const characterRefs = characterReferencesFor(firstBeat, sceneData, charLocks);
+
+    try {
+      console.log(`[SegmentGenerator] Generating anchor keyframe for Scene ${sceneNum}...`);
+      await makeKeyframe({
+        imagePrompt,
+        keyframePath,
+        plate: envPlate,
+        characterRefs,
+        label: segmentId,
+      });
+
+      if (onKeyframeReady) await onKeyframeReady(sceneDoc, keyframePath);
+    } catch (err) {
+      console.error(`[SegmentGenerator] ⚠ Failed keyframe for Scene ${sceneNum}: ${err.message}`);
+    }
+  }
+
+  console.log(`[SegmentGenerator] ✅ Phase 1 complete: all anchor keyframes pre-generated.`);
+}
+
+/**
+ * Generate all video segments for a single scene (Phase 2: LTX Video Animation).
  *
  * @param {object} params
  * @param {string} params.jobId
@@ -175,8 +267,7 @@ async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = 
  * @param {object} params.characterLocks     name -> lock prompt, or name -> { lockPrompt, referenceImagePath }
  * @param {string|object} params.environmentLock  lock prompt, or { lockPrompt, referenceImagePath }
  * @param {string} params.animationStyle
- * @param {string} [params.carryInFrame]     last frame of the PREVIOUS scene, so
- *                                           continuity survives scene boundaries
+ * @param {string} [params.carryInFrame]     last frame of the PREVIOUS scene
  * @param {Function} [params.onSegmentComplete] callback(segmentNumber, videoPath)
  * @returns {Promise<{ segments: Array, sceneVideoPath: string, lastFramePath: string|null }>}
  */
@@ -204,8 +295,6 @@ export async function generateSceneSegments({
   const envPlate = existingPath(envLock.referenceImagePath);
 
   const segments = [];
-  // Seeded from the previous scene: this is what makes the next clip start where
-  // the last one stopped instead of restarting the look at every scene.
   let lastFramePath = existingPath(carryInFrame);
   if (lastFramePath) {
     console.log(`[SegmentGenerator] Scene ${sceneNum} continues from ${path.basename(lastFramePath)}`);
@@ -232,52 +321,25 @@ export async function generateSceneSegments({
     };
 
     try {
-      switch (beat.strategy) {
-        case GENERATION_STRATEGY.CONTINUATION: {
-          if (lastFramePath) {
-            // Cheapest and most continuous path: no image call at all.
-            await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
-            break;
-          }
-          await makeKeyframe({
-            imagePrompt, keyframePath, plate: envPlate, characterRefs, label: segmentId,
-          });
-          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-          break;
-        }
-
-        case GENERATION_STRATEGY.FRAME_BRIDGE: {
-          if (lastFramePath) {
-            const endFramePath = path.join(imgDir, `${segmentId}_endframe.jpg`);
-            await makeKeyframe({
-              imagePrompt,
-              keyframePath: endFramePath,
-              plate: lastFramePath,
-              characterRefs,
-              label: segmentId,
-            });
-            await ltx.frameToFrame(lastFramePath, endFramePath, videoPrompt, videoPath, videoOptions);
-            break;
-          }
-          await makeKeyframe({
-            imagePrompt, keyframePath, plate: envPlate, characterRefs, label: segmentId,
-          });
-          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-          break;
-        }
-
-        // ANCHOR, ANGLE_CHANGE, REACTION and anything unrecognised: build a
-        // keyframe, re-anchored from the previous frame whenever there is one.
-        default: {
-          await makeKeyframe({
-            imagePrompt,
-            keyframePath,
-            plate: lastFramePath || envPlate,
-            characterRefs,
-            label: segmentId,
-          });
-          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-        }
+      // ── Use pre-generated keyframe or direct continuation ────────────────
+      if (i === 0 && fs.existsSync(keyframePath)) {
+        // First beat: already pre-generated in Phase 1!
+        console.log(`[SegmentGenerator] Using pre-generated keyframe for ${segmentId}`);
+        await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
+      } else if (lastFramePath && (beat.strategy === GENERATION_STRATEGY.CONTINUATION || i > 0)) {
+        // Continuation beats: direct from video's last frame — ZERO image call!
+        console.log(`[SegmentGenerator] Direct continuous video from ${path.basename(lastFramePath)}`);
+        await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
+      } else {
+        // Angle change / Frame bridge fallback
+        await makeKeyframe({
+          imagePrompt,
+          keyframePath,
+          plate: lastFramePath || envPlate,
+          characterRefs,
+          label: segmentId,
+        });
+        await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
       }
 
       // Hand this segment's final frame to the next one.
@@ -382,4 +444,4 @@ async function stitchSegments(jobId, sceneNum, segments) {
   return outPath;
 }
 
-export default { generateSceneSegments };
+export default { generateSceneSegments, pregenerateAllSceneKeyframes };

@@ -27,7 +27,7 @@ import { logInfo, logWarn, logError } from '../services/logService.js';
 import { analyzeScript } from '../services/scriptAnalyzer.js';
 import { decomposeScript, planGenerationStrategies, buildBeatPrompts } from '../services/cinematicDirectorEngine.js';
 import { createCharacterLock, createEnvironmentLock, getActWardrobe, buildCharacterLockPrompt } from '../services/consistencyLockService.js';
-import { generateSceneSegments } from '../services/segmentGenerator.js';
+import { generateSceneSegments, pregenerateAllSceneKeyframes } from '../services/segmentGenerator.js';
 import { assembleVideo } from '../services/videoAssembler.js';
 import { generateThumbnailFromVideo } from '../services/thumbnailService.js';
 import { deleteTempFiles, getFileSize, uploadToCloud } from '../services/storageService.js';
@@ -285,7 +285,6 @@ export async function processSegmentStep(jobId) {
 
   await Job.findByIdAndUpdate(jobId, { status: JOB_STATUS.SEGMENT_GENERATION, progress: 40 });
   emitJobEvent(jobId, 'job_progress', { status: JOB_STATUS.SEGMENT_GENERATION, progress: 40 });
-  await logInfo(jobId, '🎥 Generating 8-second video segments...');
 
   const directorPlan = job.directorPlan;
   const characterLocks = job.characterLocks || {};
@@ -293,14 +292,36 @@ export async function processSegmentStep(jobId) {
   const animationStyle = job.animationStyle || 'cinematic';
 
   const scenes = await Scene.find({ jobId }).sort({ sceneNumber: 1 });
+
+  // ─── PHASE 1: BATCH KEYFRAME PRE-GENERATION (Keeps Qwen Image GPU warm) ───
+  await logInfo(jobId, `🖼️ Phase 1/2: Batch-generating all ${scenes.length} scene anchor keyframes...`);
+  await pregenerateAllSceneKeyframes({
+    jobId,
+    scenes,
+    directorPlan,
+    characterLocks,
+    environmentLocks,
+    animationStyle,
+    onKeyframeReady: async (sceneDoc, keyframePath) => {
+      sceneDoc.imagePath = keyframePath;
+      await sceneDoc.save();
+      emitJobEvent(jobId, 'scene_updated', {
+        sceneId: sceneDoc._id,
+        sceneNumber: sceneDoc.sceneNumber,
+        imagePath: keyframePath,
+      });
+    },
+  });
+  await logInfo(jobId, `✅ Phase 1 complete: all ${scenes.length} scene keyframes ready.`);
+
+  // ─── PHASE 2: CONTINUOUS VIDEO ANIMATION (Keeps LTX Video GPU warm) ───────
+  await logInfo(jobId, `🎬 Phase 2/2: Rendering continuous video segments with LTX-2.5...`);
   let completedScenes = 0;
-  // The last frame of the previous scene. Threaded into the next scene so the
-  // film reads as one continuous take instead of restarting at every scene.
   let carryInFrame = null;
 
   for (const sceneDoc of scenes) {
     const sceneNum = sceneDoc.sceneNumber;
-    await logInfo(jobId, `Generating scene ${sceneNum}/${scenes.length}...`);
+    await logInfo(jobId, `Animating scene ${sceneNum}/${scenes.length}...`);
 
     // Find matching scene from director plan
     let planScene = null;
