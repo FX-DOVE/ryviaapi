@@ -1216,7 +1216,7 @@ export default function FilmStudioPage() {
               <h2>⏳ Loading Screenplay...</h2>
               <p>Fetching your generated screenplay from the production queue.</p>
             </div>
-            <div className="mt-8 flex justify-center gap-4">
+            <div className="step-footer mt-4 justify-center">
               <button className="btn-secondary" onClick={() => setStep(3)}>← Go Back to Generate</button>
             </div>
           </div>
@@ -1237,7 +1237,7 @@ export default function FilmStudioPage() {
                 {generatedScreenplay.generationError || error}
               </div>
             )}
-            <div className="mt-8 flex justify-center gap-4">
+            <div className="step-footer mt-4">
               <button className="btn-secondary" onClick={() => setStep(3)} disabled={loading}>← Back to Settings</button>
               <button className="btn-produce btn-lg" onClick={handleRegenerate} disabled={loading}>
                 {loading ? 'Retrying…' : '🔄 Retry Generation'}
@@ -1327,7 +1327,7 @@ export default function FilmStudioPage() {
                   `Screenplay status: ${generatedScreenplay.status}. Please try regenerating.`}
               </p>
             </div>
-            <div className="mt-8 flex justify-center gap-4">
+            <div className="step-footer mt-4">
               <button className="btn-secondary" onClick={() => setStep(3)}>← Back to Generate</button>
               {!['in_production','completed'].includes(generatedScreenplay.status) && (
                 <button className="btn-produce btn-lg" onClick={handleRegenerate} disabled={loading}>
@@ -1337,6 +1337,11 @@ export default function FilmStudioPage() {
               {generatedScreenplay.status === 'in_production' && (
                 <button className="btn-produce btn-lg" onClick={() => navigate('/app/history')}>
                   📋 View Jobs Dashboard
+                </button>
+              )}
+              {generatedScreenplay.status === 'completed' && (
+                <button className="btn-produce btn-lg" onClick={() => navigate('/app/history')}>
+                  📋 View Results
                 </button>
               )}
             </div>
