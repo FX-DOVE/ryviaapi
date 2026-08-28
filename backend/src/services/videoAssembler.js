@@ -82,8 +82,8 @@ export async function assembleVideo({ jobId, scenes, narrationPath, srtPath, sub
       await downloadAsset(brandKit.introUrl, localIntro);
       // Re-encode to match targets
       await execAsync(
-        `ffmpeg -y -i "${localIntro}" -vf "${standardizedScaleFilter}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "${standardizedIntro}"`,
-        { timeout: 120000 }
+        `ffmpeg -y -i "${localIntro}" -vf "${standardizedScaleFilter}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p "${standardizedIntro}"`,
+        { timeout: 300000 }
       );
       loopedPaths.push(standardizedIntro);
     } catch (e) {
@@ -100,7 +100,7 @@ export async function assembleVideo({ jobId, scenes, narrationPath, srtPath, sub
     const loopedPath = path.join(tmp, `looped_scene_${i}.mp4`);
 
     await execAsync(
-      `ffmpeg -y -stream_loop -1 -i "${s.videoPath}" -t ${duration} -vf "${standardizedScaleFilter}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "${loopedPath}"`,
+      `ffmpeg -y -stream_loop -1 -i "${s.videoPath}" -t ${duration} -vf "${standardizedScaleFilter}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p "${loopedPath}"`,
       { timeout: 300000 }
     );
     loopedPaths.push(loopedPath);
@@ -114,8 +114,8 @@ export async function assembleVideo({ jobId, scenes, narrationPath, srtPath, sub
     try {
       await downloadAsset(brandKit.outroUrl, localOutro);
       await execAsync(
-        `ffmpeg -y -i "${localOutro}" -vf "${standardizedScaleFilter}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "${standardizedOutro}"`,
-        { timeout: 120000 }
+        `ffmpeg -y -i "${localOutro}" -vf "${standardizedScaleFilter}" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p "${standardizedOutro}"`,
+        { timeout: 300000 }
       );
       loopedPaths.push(standardizedOutro);
     } catch (e) {
@@ -178,8 +178,8 @@ export async function assembleVideo({ jobId, scenes, narrationPath, srtPath, sub
       else if (pos === 'bottom_right') overlayFilter = 'overlay=main_w-overlay_w-10:main_h-overlay_h-10';
 
       await execAsync(
-        `ffmpeg -y -i "${subtitledPath}" -i "${localLogo}" -filter_complex "[0:v][1:v]${overlayFilter}[v]" -map "[v]" -map 0:a? -c:v libx264 -crf 23 -c:a copy "${watermarkedPath}"`,
-        { timeout: 120000 }
+        `ffmpeg -y -i "${subtitledPath}" -i "${localLogo}" -filter_complex "[0:v][1:v]${overlayFilter}[v]" -map "[v]" -map 0:a? -c:v libx264 -preset veryfast -pix_fmt yuv420p -crf 23 -c:a copy "${watermarkedPath}"`,
+        { timeout: 600000 }
       );
     } catch (e) {
       console.warn(`[VideoAssembler] Watermark rendering failed: ${e.message}`);
@@ -205,8 +205,8 @@ export async function assembleVideo({ jobId, scenes, narrationPath, srtPath, sub
     styledPath = path.join(tmp, 'styled.mp4');
     const filters = filterList.join(',');
     await execAsync(
-      `ffmpeg -y -i "${watermarkedPath}" -vf "${filters}" -c:v libx264 -crf 23 -c:a copy "${styledPath}"`,
-      { timeout: 120000 }
+      `ffmpeg -y -i "${watermarkedPath}" -vf "${filters}" -c:v libx264 -preset veryfast -pix_fmt yuv420p -crf 23 -c:a copy "${styledPath}"`,
+      { timeout: 600000 }
     );
   }
 
@@ -214,7 +214,7 @@ export async function assembleVideo({ jobId, scenes, narrationPath, srtPath, sub
   const finalPath = path.join(outDir, 'final.mp4');
   await execAsync(
     `ffmpeg -y -i "${styledPath}" ` +
-    `-c:v libx264 -crf 23 -preset fast ` +
+    `-c:v libx264 -crf 23 -preset veryfast -pix_fmt yuv420p ` +
     `-c:a aac -b:a 128k ` +
     `-movflags +faststart ` +
     `"${finalPath}"`,
