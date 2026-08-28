@@ -260,27 +260,108 @@ export async function createEnvironmentLock(environment, animationStyle = 'cinem
     .replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
   const refImagePath = path.join(lockDir, `${safeId}_reference.jpg`);
 
-  // Photorealistic environment plate — avoid "concept art" / "production design" language
+  // Check if environment has an uploaded reference image or cloud key
+  let uploadedRef = environment.referenceImagePath
+    || environment.referenceImageUrl
+    || environment.referenceImageUrls?.[0]
+    || null;
+
+  if (environment.referenceImageKey || environment.referenceImageKeys?.[0]) {
+    try {
+      const { getSignedUrl } = await import('./storageService.js');
+      const key = environment.referenceImageKey || environment.referenceImageKeys[0];
+      const freshUrl = await getSignedUrl(key, 7200);
+      if (freshUrl) uploadedRef = freshUrl;
+    } catch (e) {
+      console.warn(`[ConsistencyLock] Could not refresh signed URL for env key:`, e.message);
+    }
+  }
+
+  if (typeof uploadedRef === 'string' && uploadedRef.startsWith('/mock-storage')) {
+    const localMock = path.join(process.cwd(), 'storage', 'public', uploadedRef.replace(/^\//, ''));
+    if (fs.existsSync(localMock)) uploadedRef = localMock;
+  }
+
+  // Also check if there is an existing character reference plate or master world plate in the job
+  // to condition lighting and cinema grading
+  let worldPlate = null;
+  if (!uploadedRef && jobId) {
+    const charDir = charLockDir(jobId);
+    if (fs.existsSync(charDir)) {
+      const charFiles = fs.readdirSync(charDir).filter(f => f.endsWith('.jpg') || f.endsWith('.png'));
+      if (charFiles.length > 0) {
+        worldPlate = path.join(charDir, charFiles[0]);
+      }
+    }
+  }
+
+  const isHttp = typeof uploadedRef === 'string' && /^https?:\/\//i.test(uploadedRef);
+  const isLocalFile = typeof uploadedRef === 'string' && !isHttp && fs.existsSync(uploadedRef);
+
+  const envEditInstruction = [
+    '35mm film photograph, Kodak Portra 400. Cinematic film still of this exact location.',
+    environment.name ? `Location setting: ${environment.name}.` : '',
+    environment.description || '',
+    'Wide establishing view, realistic architectural details, authentic natural practical textures, natural ambient lighting, subtle film grain.',
+    'No cartoon, no 3D CGI render, no plastic texture, no synthetic sheen, empty scene without people.',
+  ].filter(Boolean).join(' ');
+
   const refPrompt = [
-    'RAW photograph, real location, on-location film production still',
+    '35mm film photograph, Kodak Portra 400, on-location cinematic film production still',
     environment.name ? `Setting: ${environment.name}` : '',
     environment.description || '',
     'Wide establishing shot showing the full physical space',
-    'Realistic architecture, authentic textures, natural practical lighting',
-    'No people, empty location, high dynamic range',
-    'Shot on Arri Alexa, 24mm anamorphic lens, cinematic grade, film grain',
+    'Realistic architecture, authentic textures, natural practical lighting, subtle film grain',
+    'No people, empty location, natural dynamic range, unretouched',
+    'Shot on 35mm motion picture film, true-to-life colors',
   ].filter(Boolean).join('. ');
 
-  try {
-    await images.generate(refPrompt, refImagePath, {
-      width: ENV_LOCK_WIDTH,
-      height: ENV_LOCK_HEIGHT,
-      negative_prompt: REALISM_NEGATIVE_PROMPT,
-      num_inference_steps: 40,
-    });
-    console.log(`[ConsistencyLock] ✅ Environment lock created for "${environment.name}": ${refImagePath}`);
-  } catch (err) {
-    console.error(`[ConsistencyLock] ⚠ Failed to generate environment ref for "${environment.name}": ${err.message}`);
+  if (uploadedRef && (isHttp || isLocalFile)) {
+    try {
+      console.log(`[ConsistencyLock] 🏛️ Generating environment lock for "${environment.name}" using uploaded reference image via Qwen-Image-Edit...`);
+      await images.edit([uploadedRef], envEditInstruction, refImagePath, {
+        negative_prompt: REALISM_NEGATIVE_PROMPT,
+        num_inference_steps: 50,
+        true_cfg_scale: 3.0,
+      });
+      console.log(`[ConsistencyLock] ✅ Environment lock created via Qwen-Image-Edit for "${environment.name}": ${refImagePath}`);
+    } catch (err) {
+      console.error(`[ConsistencyLock] ❌ Environment edit failed for "${environment.name}": ${err.message}`);
+      throw new Error(`Location reference for "${environment.name}" failed: ${err.message}`);
+    }
+  } else if (worldPlate && fs.existsSync(worldPlate)) {
+    try {
+      console.log(`[ConsistencyLock] 🏛️ Generating environment lock for "${environment.name}" anchored to film world plate via Qwen-Image-Edit...`);
+      await images.edit([worldPlate], `Generate the background environment location plate for this film world: ${environment.name}. ${environment.description || ''}. Empty location, no people, wide establishing shot, matching the same 35mm film grade, color palette, and lighting style.`, refImagePath, {
+        negative_prompt: REALISM_NEGATIVE_PROMPT,
+        num_inference_steps: 50,
+        true_cfg_scale: 3.0,
+      });
+      console.log(`[ConsistencyLock] ✅ Environment lock created via world-plate edit for "${environment.name}": ${refImagePath}`);
+    } catch (err) {
+      console.warn(`[ConsistencyLock] World-plate edit fallback to generate for "${environment.name}": ${err.message}`);
+      await images.generate(refPrompt, refImagePath, {
+        width: ENV_LOCK_WIDTH,
+        height: ENV_LOCK_HEIGHT,
+        negative_prompt: REALISM_NEGATIVE_PROMPT,
+        num_inference_steps: 50,
+        true_cfg_scale: 3.0,
+      });
+    }
+  } else {
+    try {
+      console.log(`[ConsistencyLock] 🏛️ Generating environment lock for "${environment.name}" via text...`);
+      await images.generate(refPrompt, refImagePath, {
+        width: ENV_LOCK_WIDTH,
+        height: ENV_LOCK_HEIGHT,
+        negative_prompt: REALISM_NEGATIVE_PROMPT,
+        num_inference_steps: 50,
+        true_cfg_scale: 3.0,
+      });
+      console.log(`[ConsistencyLock] ✅ Environment lock generated for "${environment.name}": ${refImagePath}`);
+    } catch (err) {
+      console.error(`[ConsistencyLock] ⚠ Failed to generate environment ref for "${environment.name}": ${err.message}`);
+    }
   }
 
   const lockPrompt = buildEnvironmentLockPrompt(environment, animationStyle);

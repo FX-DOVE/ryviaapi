@@ -271,11 +271,36 @@ export async function processLockStep(jobId) {
     }
   }
 
+  // Load all available Environments for this job/workspace
+  let dbEnvironments = [];
+  try {
+    const { default: Environment } = await import('../models/Environment.js');
+    const envQuery = { workspaceId: job.workspaceId };
+    if (job.projectId) envQuery.projectId = job.projectId;
+    dbEnvironments = await Environment.find(envQuery);
+  } catch (err) {
+    console.warn(`[WorkerSteps] Could not load DB environments: ${err.message}`);
+  }
+
   // Generate environment lock images
-  const environments = directorPlan.environments || [];
+  const environments = [...(directorPlan.environments || [])];
   for (let i = 0; i < environments.length; i++) {
     const env = environments[i];
-    await logInfo(jobId, `Locking environment ${i + 1}/${environments.length}: ${env.name}`);
+
+    // Match DB environment
+    const envMatch = dbEnvironments.find(e =>
+      e.name.trim().toLowerCase() === String(env.name).trim().toLowerCase() ||
+      e.name.trim().toLowerCase().includes(String(env.name).trim().toLowerCase()) ||
+      String(env.name).trim().toLowerCase().includes(e.name.trim().toLowerCase())
+    );
+
+    if (envMatch) {
+      env.referenceImageUrl = envMatch.referenceImageUrls?.[0] || env.referenceImageUrl;
+      env.referenceImageKey = envMatch.referenceImageKeys?.[0] || env.referenceImageKey;
+      console.log(`[WorkerSteps] 🔗 Attached DB Environment "${envMatch.name}" to plan location "${env.name}"`);
+    }
+
+    await logInfo(jobId, `Locking environment ${i + 1}/${environments.length}: ${env.name}${env.referenceImageUrl || env.referenceImageKey ? ' (📸 with uploaded reference)' : ''}`);
 
     try {
       const lock = await createEnvironmentLock(env, animationStyle, jobId);
