@@ -386,14 +386,22 @@ export async function toImagePayload(ref) {
   // fall through to text-to-image.
   if (/^https?:\/\//i.test(ref)) {
     try {
-      const response = await axios.get(ref, { responseType: 'arraybuffer', timeout: 60000 });
+      console.log(`[toImagePayload] Downloading reference image: ${ref.slice(0, 80)}...`);
+      const response = await axios.get(ref, { responseType: 'arraybuffer', timeout: 90000 });
       const contentType = response.headers['content-type'] || 'image/jpeg';
       const mime = contentType.split(';')[0].trim() || 'image/jpeg';
       const b64 = Buffer.from(response.data).toString('base64');
-      console.log(`[toImagePayload] Downloaded ${Math.round(b64.length * 0.75 / 1024)} KB image from URL → base64 data URI`);
+      const sizeKb = Math.round(b64.length * 0.75 / 1024);
+      console.log(
+        `[toImagePayload] ✅ Downloaded and encoded ${sizeKb} KB reference image `
+        + `(${mime}) from: ${ref.slice(0, 60)} → base64 data URI ready for Runpod`,
+      );
       return `data:${mime};base64,${b64}`;
     } catch (err) {
-      console.error(`[toImagePayload] Failed to download reference image: ${err.message}`);
+      console.error(
+        `[toImagePayload] ❌ Failed to download reference image: ${err.message} `
+        + `(URL: ${ref.slice(0, 80)})`,
+      );
       return null;
     }
   }

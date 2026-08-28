@@ -2528,6 +2528,9 @@ input[type='file']::file-selector-button:hover {
   flex-direction: column;
   min-height: 100%;
   background: var(--bg-base);
+  /* Prevent any child from causing horizontal scroll on mobile */
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 .film-studio-header {
@@ -3309,6 +3312,8 @@ input[type='file']::file-selector-button:hover {
 .cost-icon { font-size: 18px; flex-shrink: 0; }
 
 /* ── Responsive ─────────────────────────────────────────────── */
+
+/* ── 900px: tablet / large phone landscape ─────────────────── */
 @media (max-width: 900px) {
   .concept-grid  { grid-template-columns: 1fr; }
   .style-grid    { grid-template-columns: 1fr 1fr; }
@@ -3316,6 +3321,176 @@ input[type='file']::file-selector-button:hover {
   .film-studio-body { padding: 16px; }
   .step-footer   { flex-direction: column; align-items: stretch; }
   .generation-summary { grid-template-columns: 1fr; }
+}
+
+/* ── 640px: small tablets / large phones ───────────────────── */
+@media (max-width: 640px) {
+  /* Header: 32px side padding causes overflow on 320-375px screens */
+  .film-studio-header {
+    padding: 16px;
+  }
+
+  /* Panel headers with 32px side padding */
+  .step-panel-header {
+    padding: 20px 16px 16px;
+  }
+
+  /* Character grid: 32px padding causes overflow */
+  .characters-grid {
+    padding: 16px;
+    grid-template-columns: 1fr;
+  }
+
+  /* Concept grid padding */
+  .concept-grid {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  /* Generation summary: 32px side margins clip on narrow screens */
+  .generation-summary {
+    padding: 16px 16px 0;
+    margin: 0;
+  }
+
+  /* Synopsis preview: 32px margin overflows */
+  .synopsis-preview {
+    margin: 16px 16px 0;
+  }
+
+  /* Generation progress: 32px margin overflows */
+  .generation-progress {
+    margin: 16px 16px 0;
+  }
+
+  /* Production cost note: 32px margin overflows */
+  .production-cost-note {
+    margin: 0 16px 8px;
+  }
+
+  /* Chars empty hint: 32px margin overflows */
+  .chars-empty-hint {
+    margin: 0 16px 16px;
+  }
+
+  /* Screenplay overview: 32px padding overflows */
+  .screenplay-overview {
+    padding: 16px;
+  }
+
+  /* Step footer: ensure buttons stack and stretch */
+  .step-footer {
+    padding: 16px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .step-footer .btn-secondary,
+  .step-footer .btn-produce,
+  .step-footer .btn-generate {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Film style cards: shrink min to fill screen width */
+  .film-style-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+    gap: 12px;
+  }
+
+  /* Style grid (animation style picker) */
+  .style-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Duration grid wraps */
+  .duration-grid {
+    flex-wrap: wrap;
+  }
+
+  .duration-option {
+    min-width: 60px;
+    flex: 1 1 60px;
+  }
+
+  /* Acts list in screenplay overview */
+  .acts-list {
+    grid-template-columns: 1fr;
+  }
+
+  /* Character editor: ensure modal body is scrollable */
+  .char-editor {
+    max-height: 92vh;
+    max-width: calc(100vw - 32px);
+  }
+
+  .char-editor-body {
+    padding: 16px;
+  }
+
+  .char-editor-header,
+  .char-editor-footer {
+    padding: 14px 16px;
+  }
+}
+
+/* ── 480px: small phones (320–480px) ───────────────────────── */
+@media (max-width: 480px) {
+  /* Overlay padding: 24px each side = 48px on 320px screen, clips modal */
+  .char-editor-overlay {
+    padding: 8px;
+    align-items: flex-end;  /* slide up from bottom on very small screens */
+  }
+
+  .char-editor {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 95vh;
+    max-width: 100%;
+  }
+
+  /* Editor rows: single column on narrow screens */
+  .editor-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* Film studio brand icon shrinks */
+  .film-studio-icon {
+    font-size: 28px;
+  }
+
+  /* Film style grid: single column on very narrow screens */
+  .film-style-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stat pills: wrap gracefully */
+  .sp-stats {
+    gap: 6px;
+  }
+
+  .stat-pill {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  /* Summary cards in generation screen */
+  .summary-card {
+    padding: 12px;
+  }
+
+  /* Generation progress: stacked layout */
+  .generation-progress {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .gen-spinner {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 /* ─── VIDEO TYPE MODE CARDS (WITH THUMBNAILS) ─────────────────────── */

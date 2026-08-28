@@ -43,14 +43,29 @@ const [ENV_LOCK_WIDTH, ENV_LOCK_HEIGHT] = LTX_RESOLUTIONS['720p'];
  * @param {string} jobId
  * @returns {Promise<{ lockPrompt: string, referenceImagePath: string }>}
  */
-// Strong universal negative prompt that blocks cartoon / illustration aesthetics.
+// Strong universal negative prompt that blocks cartoon / illustration aesthetics,
+// unrealistic body proportions, and over-processed skin.
 const REALISM_NEGATIVE_PROMPT = [
   'cartoon, anime, animation, illustrated, comic, drawing, sketch, painting, watercolor,',
   'digital art, concept art, 3D render, CGI, cel shading, smooth skin, plastic skin,',
   'airbrushed, over-smoothed, unrealistic, exaggerated features, stylized, fantasy,',
   'neon colors, flat lighting, overexposed, blurry, lowres, bad anatomy, deformed,',
-  'monochrome, grayscale, render, toy, doll, manga, vector art, clipart',
+  'monochrome, grayscale, render, toy, doll, manga, vector art, clipart,',
+  'thin waist, emaciated, stick figure, anorexic, skinny legs, unrealistic body proportions,',
+  'mannequin body, fashion doll proportions, elongated limbs, disproportionate figure,',
+  'porcelain skin, plastic complexion, wax skin, perfect unblemished skin, over-retouched,',
+  'beauty filter, face-tuned, smoothed face, blurred pores, flawless synthetic skin',
 ].join(' ');
+
+/**
+ * Photorealism anchor prepended to every character portrait prompt.
+ * Placed first so it anchors the model's priors before style descriptors.
+ */
+const PHOTOREALISM_PREFIX =
+  'RAW photograph of a real human being. Natural skin texture, visible pores, realistic complexion. '
+  + 'Authentic body proportions — natural weight and build, not emaciated or artificially thin. '
+  + 'Shot on a professional DSLR camera, 85mm portrait lens, natural studio lighting. '
+  + 'Photojournalism quality, unretouched skin, film grain, 4K resolution. ';
 
 export async function createCharacterLock(character, animationStyle = 'cinematic', jobId = '') {
   const lockDir = charLockDir(jobId);
@@ -60,10 +75,11 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   const refImagePath = path.join(lockDir, `${safeName}_reference.jpg`);
 
   // ── Photorealistic identity portrait prompt ──────────────────────────────
-  // Do NOT use "reference sheet", "design sheet", "concept art", or similar
-  // — those phrases trigger illustration / cartoon rendering in diffusion models.
+  // PHOTOREALISM_PREFIX is prepended first so the model's prior is photographic
+  // before any descriptive content. Do NOT use "reference sheet", "concept art",
+  // or similar — those phrases trigger illustration rendering in diffusion models.
   const refPrompt = [
-    'RAW photo, real human being, natural skin texture, visible pores, natural complexion',
+    PHOTOREALISM_PREFIX,
     `${character.name}:`,
     character.physicalDescription || '',
     character.clothingDefault ? `Wearing: ${character.clothingDefault}` : '',
@@ -74,39 +90,90 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   ].filter(Boolean).join('. ');
 
   // ── If the character has a user-uploaded photo, edit it forward ──────────
-  // This is the most reliable way to preserve identity — we never deviate
-  // from the source image; we only refine its cinematic quality.
+  // This is the most reliable way to preserve identity. The uploaded reference
+  // image MUST drive generation — if it fails, we surface an explicit error
+  // rather than silently falling back to text-to-image (which produces an
+  // unrelated character and is the primary source of this bug).
   const uploadedRef = character.referenceImagePath   // from Film Characters UI
     || character.referenceImageUrl
     || character.avatar
     || null;
 
-  try {
-    if (uploadedRef && (uploadedRef.startsWith('http') || (typeof uploadedRef === 'string' && fs.existsSync(uploadedRef)))) {
-      console.log(`[ConsistencyLock] Using uploaded reference for "${character.name}" → cinematic grade`);
+  let referenceUsed = false;
+
+  if (uploadedRef) {
+    const isHttp = /^https?:\/\//i.test(uploadedRef);
+    const isLocalFile = !isHttp && typeof uploadedRef === 'string' && fs.existsSync(uploadedRef);
+
+    if (isHttp || isLocalFile) {
+      console.log(
+        `[ConsistencyLock] 📸 Phase 1/4: Reference image received for "${character.name}" `
+        + `(${isHttp ? 'URL' : 'local file'}: ${uploadedRef.slice(0, 80)})`,
+      );
+
       const editInstruction = [
         'Keep this exact person — same face, same skin tone, same hair, same eyes, same body.',
-        'Enhance to high-quality DSLR cinematic portrait: natural skin texture, film grain,',
-        'realistic lighting. Do NOT change any facial features, skin color, or identity.',
+        'Natural body proportions — do not make them thinner or alter their build.',
+        'Enhance to high-quality DSLR cinematic portrait: natural skin texture, visible pores,',
+        'film grain, realistic lighting. Do NOT change any facial features, skin color, or identity.',
         character.clothingDefault ? `Ensure they are wearing: ${character.clothingDefault}.` : '',
         'Remove cartoon or illustration artifacts. Make it look like a real photograph.',
       ].filter(Boolean).join(' ');
-      await images.edit([uploadedRef], editInstruction, refImagePath, {
-        negative_prompt: REALISM_NEGATIVE_PROMPT,
-        num_inference_steps: 45,
-      });
+
+      try {
+        console.log(`[ConsistencyLock] 📸 Phase 2/4: Encoding reference image for "${character.name}" → base64...`);
+        // toImagePayload downloads remote URLs and re-encodes them as base64 data URIs
+        // so Runpod workers (which cannot reach private R2/S3 buckets) can consume them.
+        // This step is logged by toImagePayload itself — see runpodClient.js.
+
+        console.log(`[ConsistencyLock] 📸 Phase 3/4: Sending reference to Qwen-Image-Edit for "${character.name}"...`);
+        await images.edit([uploadedRef], editInstruction, refImagePath, {
+          negative_prompt: REALISM_NEGATIVE_PROMPT,
+          num_inference_steps: 50,
+        });
+        referenceUsed = true;
+        console.log(`[ConsistencyLock] 📸 Phase 4/4: ✅ img2img complete for "${character.name}": ${refImagePath}`);
+      } catch (err) {
+        // ── IMPORTANT: Do NOT silently fall back to text-to-image. ──────────
+        // A silent fallback is what causes the "random unrelated character" bug.
+        // Surface the error explicitly so the user knows to re-upload the photo.
+        console.error(
+          `[ConsistencyLock] ❌ Reference image FAILED for "${character.name}": ${err.message}\n`
+          + '  → This means the character will be generated from text only, which may not match the reference.\n'
+          + '  → Cause: the uploaded image could not be downloaded or encoded (expired URL, size limit, or network error).\n'
+          + '  → Fix: re-upload the reference image in the Film Characters panel and retry production.',
+        );
+        // Re-throw so the orchestrator can surface this as a job-level warning
+        // rather than silently continuing with an unrelated face.
+        throw new Error(
+          `Reference image for character "${character.name}" failed to process: ${err.message}. `
+          + 'Please re-upload the reference photo in the Film Characters panel and retry.',
+        );
+      }
     } else {
+      console.warn(
+        `[ConsistencyLock] ⚠ Reference image path for "${character.name}" is neither a valid URL `
+        + `nor an existing local file — falling back to text-to-image. `
+        + `(value: ${String(uploadedRef).slice(0, 100)})`,
+      );
+    }
+  }
+
+  // ── Fallback: generate from text prompt (only when NO reference was uploaded) ──
+  if (!referenceUsed && !fs.existsSync(refImagePath)) {
+    console.log(`[ConsistencyLock] 🖼️  No reference uploaded for "${character.name}" — generating from text prompt...`);
+    try {
       await images.generate(refPrompt, refImagePath, {
         width: 1024,
         height: 1024,
         negative_prompt: REALISM_NEGATIVE_PROMPT,
-        num_inference_steps: 40,
+        num_inference_steps: 50,
       });
+      console.log(`[ConsistencyLock] ✅ Text-to-image lock created for "${character.name}": ${refImagePath}`);
+    } catch (err) {
+      // Text-to-image failure is non-fatal — text lock still provides partial consistency.
+      console.error(`[ConsistencyLock] ⚠ Text-to-image failed for "${character.name}": ${err.message}`);
     }
-    console.log(`[ConsistencyLock] ✅ Character lock created for "${character.name}": ${refImagePath}`);
-  } catch (err) {
-    console.error(`[ConsistencyLock] ⚠ Failed to generate reference for "${character.name}": ${err.message}`);
-    // Continue without reference image — text lock still works
   }
 
   // Build the text-based lock prompt (injected into every generation)
@@ -115,6 +182,7 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   return {
     lockPrompt,
     referenceImagePath: fs.existsSync(refImagePath) ? refImagePath : null,
+    referenceUsed,
   };
 }
 

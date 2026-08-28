@@ -48,18 +48,23 @@ export function compileCharacterSeedPrompt(character) {
     parts.push(`wearing ${character.clothingDefault}`);
   }
 
-  // Animation style hint
+  // Animation style hint — photorealistic styles get an explicit body-realism anchor
+  // to prevent the model defaulting to thin/emaciated or smooth/plastic proportions.
   if (character.animationStyle) {
     const styleHints = {
       '2d_anime':           'anime art style character design, consistent cel-shaded appearance',
       'pixar':              'Pixar 3D animation style, smooth rounded features, consistent character model',
-      '3d_cgi_hollywood':   'photorealistic 3D CGI character, consistent facial features, film quality render',
-      'nollywood_drama':    'photorealistic, authentic African features, expressive performance style',
-      'realistic':          'photorealistic, consistent facial identity, natural appearance',
+      '3d_cgi_hollywood':   'photorealistic 3D CGI character, consistent facial features, film quality render, natural body proportions',
+      'nollywood_drama':    'RAW photographic, authentic West African features, natural complexion, real human skin texture, realistic body proportions, expressive performance style',
+      'realistic':          'RAW photographic, natural human skin with visible pores, realistic complexion, authentic body proportions — not thin or emaciated, unretouched',
+      'cinematic':          'RAW photographic, DSLR 4K, natural skin tones, film grain, realistic human features, authentic body proportions — not thin or emaciated, unretouched',
     };
     if (styleHints[character.animationStyle]) {
       parts.push(styleHints[character.animationStyle]);
     }
+  } else {
+    // Default: always anchor to photorealism for styles not explicitly listed
+    parts.push('RAW photographic, realistic body proportions, natural skin texture, not thin or emaciated, unretouched');
   }
 
   // Consistency anchor
@@ -178,9 +183,52 @@ export async function refreshCharacterSeedPrompt(characterId) {
   return seedPrompt;
 }
 
+/**
+ * Build a world-context anchor prompt for secondary characters that have no
+ * uploaded reference image. Injects the primary character's cultural/visual world
+ * so new characters feel like they belong to the same film rather than being
+ * generated in isolation with generic defaults.
+ *
+ * @param {Object} primaryCharacter - The reference character (has a lock image)
+ * @param {string} animationStyle - Film's animation style
+ * @returns {string} World context prompt to prepend to secondary character seeds
+ */
+export function worldContextPrompt(primaryCharacter, animationStyle = 'cinematic') {
+  if (!primaryCharacter) return '';
+
+  const parts = [];
+
+  parts.push('[WORLD CONTEXT: Same film as primary character]');
+
+  if (primaryCharacter.ethnicity) {
+    parts.push(`Setting and world established by primary character: ${primaryCharacter.ethnicity} cultural context`);
+  }
+
+  if (primaryCharacter.physicalDescription) {
+    parts.push(`Primary character visual reference: ${primaryCharacter.physicalDescription.slice(0, 120)}`);
+  }
+
+  // Force the same cinematographic look so all characters share the same film stock
+  const cinematicAnchors = {
+    'nollywood_drama':  'RAW photographic, warm West African natural lighting, authentic skin tones, same film look as primary character',
+    'realistic':        'RAW photographic, natural cinematic lighting, same film stock as primary character',
+    'cinematic':        'RAW photographic, DSLR 4K, same cinematic grade and lighting as primary character',
+    '3d_cgi_hollywood': 'Photorealistic 3D, same lighting rig and render quality as primary character',
+    '2d_anime':         'Same anime art style as primary character, consistent cel-shading',
+    'pixar':            'Same Pixar 3D style as primary character, consistent character model quality',
+  };
+  const anchor = cinematicAnchors[animationStyle] || 'Same film quality and cinematic lighting as primary character';
+  parts.push(anchor);
+
+  parts.push('Characters must look like they belong in the SAME FILM, same world, same production quality');
+
+  return parts.join(', ') + '.';
+}
+
 export default {
   compileCharacterSeedPrompt,
   buildSceneConsistencyBlock,
   getActionMotionPrompt,
   refreshCharacterSeedPrompt,
+  worldContextPrompt,
 };

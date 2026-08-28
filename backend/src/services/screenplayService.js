@@ -95,9 +95,18 @@ Output ONLY the raw JSON. No markdown, no explanation.`;
 // ─── Stage 2: Scene List Generation (per act) ──────────────────────────────────
 
 async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, sceneOffset, jobId }) {
-  const characterNames = characters.map(c => c.name).join(', ');
+  // Build a rich character reference list — not just names.
+  // The LLM needs physical descriptions and ethnicity to generate accurate scene
+  // descriptions; name-only causes it to invent generic appearances.
+  const characterProfiles = characters.map(c => {
+    const parts = [`${c.name} (${c.role || 'character'}):`];
+    if (c.age) parts.push(`${c.age} years old`);
+    if (c.physicalDescription) parts.push(c.physicalDescription);
+    if (c.seedPrompt && !c.physicalDescription) parts.push(c.seedPrompt.slice(0, 200));
+    return parts.join(' ');
+  }).join('\n  - ');
 
-  const systemPrompt = `You are a master screenwriter generating detailed scene breakdowns for a ${animationStyle} film. Every scene must be visually compelling, narratively purposeful, and cinematically specific.`;
+  const systemPrompt = `You are a master screenwriter generating detailed scene breakdowns for a ${animationStyle} film. Every scene must be visually compelling, narratively purposeful, and cinematically specific. When writing character appearances and actions, you MUST respect the established physical descriptions provided — do not invent generic or different appearances.`;
 
   const userPrompt = `Generate exactly ${actData.sceneCount} scenes for:
 
@@ -105,7 +114,10 @@ FILM: "${title}"
 ACT ${actData.actNumber}: "${actData.title}"
 ACT DESCRIPTION: ${actData.description}
 ACT EMOTIONAL TONE: ${actData.emotion}
-CHARACTERS: ${characterNames}
+
+CAST (USE THESE EXACT PHYSICAL DESCRIPTIONS IN EVERY SCENE):
+  - ${characterProfiles || 'No characters specified'}
+
 STARTING SCENE NUMBER: ${sceneOffset + 1}
 
 DIRECTOR'S NOTES / CUSTOM INSTRUCTIONS:
