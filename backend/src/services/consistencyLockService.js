@@ -44,28 +44,24 @@ const [ENV_LOCK_WIDTH, ENV_LOCK_HEIGHT] = LTX_RESOLUTIONS['720p'];
  * @returns {Promise<{ lockPrompt: string, referenceImagePath: string }>}
  */
 // Strong universal negative prompt that blocks cartoon / illustration aesthetics,
-// unrealistic body proportions, and over-processed skin.
+// wax figures, plastic/porcelain skin, airbrushing, and studio gloss.
 const REALISM_NEGATIVE_PROMPT = [
-  'cartoon, anime, animation, illustrated, comic, drawing, sketch, painting, watercolor,',
-  'digital art, concept art, 3D render, CGI, cel shading, smooth skin, plastic skin,',
-  'airbrushed, over-smoothed, unrealistic, exaggerated features, stylized, fantasy,',
-  'neon colors, flat lighting, overexposed, blurry, lowres, bad anatomy, deformed,',
-  'monochrome, grayscale, render, toy, doll, manga, vector art, clipart,',
-  'thin waist, emaciated, stick figure, anorexic, skinny legs, unrealistic body proportions,',
-  'mannequin body, fashion doll proportions, elongated limbs, disproportionate figure,',
-  'porcelain skin, plastic complexion, wax skin, perfect unblemished skin, over-retouched,',
-  'beauty filter, face-tuned, smoothed face, blurred pores, flawless synthetic skin',
+  'plastic skin, airbrushed, porcelain skin, CGI, 3D render, digital painting, smooth skin, wax figure,',
+  'beauty filter, facetune, synthetic sheen, doll, mannequin, videogame, Unreal Engine, octane render, over-processed,',
+  'cartoon, anime, drawing, sketch, illustration, oversaturated skin, glamor shot, flat studio backdrop,',
+  'thin waist, emaciated, stick figure, unrealistic body proportions, blur, low quality, artifacts, retouched,',
+  'flawless synthetic skin, blurred pores, over-smoothed face, glossy plastic, glossy highlights, 3d model'
 ].join(' ');
 
 /**
  * Photorealism anchor prepended to every character portrait prompt.
- * Placed first so it anchors the model's priors before style descriptors.
+ * Focuses on authentic 35mm film texture, real human skin imperfections, and natural lighting.
  */
 const PHOTOREALISM_PREFIX =
-  'RAW photograph of a real human being. Natural skin texture, visible pores, realistic complexion. '
-  + 'Authentic body proportions — natural weight and build, not emaciated or artificially thin. '
-  + 'Shot on a professional DSLR camera, 85mm portrait lens, natural studio lighting. '
-  + 'Photojournalism quality, unretouched skin, film grain, 4K resolution. ';
+  '35mm film photograph, Kodak Portra 400. Authentic real human being with natural skin texture, visible pores, '
+  + 'fine lines, subtle facial wrinkles, natural uneven skin tone, real peach fuzz, authentic human complexion. '
+  + 'Authentic natural body proportions. Natural ambient daylight, unpolished, organic, candid cinema documentary still, '
+  + 'film grain, sharp focus on real skin details, unretouched. ';
 
 export async function createCharacterLock(character, animationStyle = 'cinematic', jobId = '') {
   const lockDir = charLockDir(jobId);
@@ -75,25 +71,21 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   const refImagePath = path.join(lockDir, `${safeName}_reference.jpg`);
 
   // ── Photorealistic identity portrait prompt ──────────────────────────────
-  // PHOTOREALISM_PREFIX is prepended first so the model's prior is photographic
-  // before any descriptive content. Do NOT use "reference sheet", "concept art",
-  // or similar — those phrases trigger illustration rendering in diffusion models.
   const refPrompt = [
     PHOTOREALISM_PREFIX,
     `${character.name}:`,
     character.physicalDescription || '',
     character.clothingDefault ? `Wearing: ${character.clothingDefault}` : '',
-    'Full body, neutral relaxed pose, facing camera directly',
-    'DSLR photography, 85mm portrait lens, shallow depth of field, soft natural studio lighting',
-    'Natural skin tones, realistic hair strands, true-to-life eyes, unretouched skin',
-    'Shot on Arri Alexa, cinematic grade, film grain, high detail, 4K',
+    'Natural relaxed posture, looking directly at camera',
+    '35mm film still, natural ambient room lighting, realistic depth of field',
+    'Natural human hair texture, authentic human eyes, unretouched skin with pores and fine lines',
+    'Shot on Kodak 35mm motion picture film, subtle grain, true-to-life colors',
   ].filter(Boolean).join('. ');
 
   // ── If the character has a user-uploaded photo, edit it forward ──────────
   // This is the most reliable way to preserve identity. The uploaded reference
   // image MUST drive generation — if it fails, we surface an explicit error
-  // rather than silently falling back to text-to-image (which produces an
-  // unrelated character and is the primary source of this bug).
+  // rather than silently falling back to text-to-image.
   let uploadedRef = character.referenceImagePath   // from Film Characters UI
     || character.referenceImageUrl
     || character.avatar
@@ -133,12 +125,12 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
       );
 
       const editInstruction = [
-        'Keep this exact person — same face, same skin tone, same hair, same eyes, same body.',
-        'Natural body proportions — do not make them thinner or alter their build.',
-        'Enhance to high-quality DSLR cinematic portrait: natural skin texture, visible pores,',
-        'film grain, realistic lighting. Do NOT change any facial features, skin color, or identity.',
+        'Keep this exact person from the reference photo — identical face, facial structure, skin tone, hair, eyes, and body build.',
+        'Preserve natural human skin texture with real skin pores, fine lines, subtle blemishes, and authentic human complexion.',
+        'Do NOT airbrush, do NOT smooth skin, do NOT make skin look like plastic, porcelain, wax, or CGI.',
+        'Render as an authentic 35mm film photograph with natural ambient lighting and subtle film grain.',
         character.clothingDefault ? `Ensure they are wearing: ${character.clothingDefault}.` : '',
-        'Remove cartoon or illustration artifacts. Make it look like a real photograph.',
+        'Remove any cartoonish, AI-smoothed, or synthetic sheen.',
       ].filter(Boolean).join(' ');
 
       try {
@@ -236,12 +228,12 @@ export function buildCharacterLockPrompt(character, animationStyle = 'cinematic'
     '2d_anime':           'anime art style, cel-shaded',
     'pixar':              'Pixar 3D animation style, rounded features',
     '3d_cgi_hollywood':   'photorealistic 3D, high-fidelity skin detail, subsurface scattering',
-    'nollywood_drama':    'RAW photographic, authentic West African skin tones, natural complexion, real human pores and texture',
-    'realistic':          'RAW photographic, natural human skin with visible pores, realistic complexion, unretouched',
-    'cinematic':          'RAW photographic, DSLR 4K, natural skin tones, film grain, realistic human features, unretouched',
+    'nollywood_drama':    '35mm film photograph, authentic West African skin tones, natural complexion, visible real human pores and fine lines, unretouched',
+    'realistic':          '35mm candid film photograph, natural human skin with visible pores, subtle imperfections, authentic complexion, unpolished, unretouched',
+    'cinematic':          '35mm motion picture film still, natural ambient lighting, subtle film grain, authentic human skin texture with pores and fine lines, unretouched',
   };
 
-  parts.push(styleHints[animationStyle] || 'RAW photographic, realistic human skin, natural complexion');
+  parts.push(styleHints[animationStyle] || '35mm film photograph, natural human skin with visible pores, realistic authentic complexion, unretouched');
   parts.push('IDENTICAL appearance in every single frame — same face, same skin tone, same body, same features, same ethnicity');
 
   return parts.join(', ') + '.';

@@ -47,9 +47,14 @@ export const QWEN_ASPECTS = {
   '2:3': [1056, 1584],
 };
 
-// A single space, not '' — Qwen only engages true CFG when a negative prompt
-// is present, and an empty string is falsy on the diffusers side.
-const DEFAULT_NEGATIVE_PROMPT = ' ';
+// Strong universal negative prompt that blocks cartoon / illustration aesthetics,
+// plastic/porcelain skin, over-smoothing, and wax figures.
+const DEFAULT_NEGATIVE_PROMPT = [
+  'plastic skin, airbrushed, porcelain, CGI, 3D render, digital painting, smooth skin, wax figure,',
+  'beauty filter, facetune, synthetic sheen, doll, videogame, Unreal Engine, octane render, over-processed,',
+  'cartoon, anime, drawing, sketch, illustration, oversaturated skin, glamor shot, flat studio backdrop,',
+  'thin waist, emaciated, mannequin body, unrealistic proportions, blur, low quality, artifacts, retouched'
+].join(' ');
 
 const MAX_REFERENCE_IMAGES = 3;
 const MAX_PROMPT_CHARS = 4000;
@@ -78,39 +83,42 @@ export class QwenImageProvider {
   constructor() {
     this.t2iEndpoint = process.env.RUNPOD_QWEN_T2I_ENDPOINT_ID || DEFAULT_T2I_ENDPOINT;
     this.editEndpoint = process.env.RUNPOD_QWEN_EDIT_ENDPOINT_ID || DEFAULT_EDIT_ENDPOINT;
-    this.pollMs = Number(process.env.RUNPOD_POLL_INTERVAL_MS || API_POLL_INTERVAL);
-    // Cold start on these endpoints measured at 445-685 s, generation ~90-125 s.
-    this.maxWaitMs = Number(process.env.RUNPOD_IMAGE_MAX_WAIT_MS || 20 * 60 * 1000);
+    this.pollMs = parseInt(process.env.RUNPOD_POLL_INTERVAL_MS || String(API_POLL_INTERVAL), 10);
+    this.maxWaitMs = parseInt(process.env.RUNPOD_IMAGE_TIMEOUT_MS || '300000', 10);
   }
 
-  get name() { return 'qwen-image'; }
-
-  /** True when the account key and at least the t2i endpoint are configured. */
-  configured() {
-    return hasRunpod(this.t2iEndpoint);
-  }
-
-  /** Live check — reports worker/job counts, or false when unreachable. */
-  async isAvailable() {
-    if (!this.configured()) return false;
-    const h = await health(this.t2iEndpoint);
-    return Boolean(h?.ok);
+  /** True when both endpoints and the account key are configured. */
+  isConfigured() {
+    return hasRunpod(this.t2iEndpoint) && hasRunpod(this.editEndpoint);
   }
 
   /**
-   * Text-to-image. Used for anchor keyframes and lock sheets.
+   * Health of both endpoints.
+   *
+   * @returns {Promise<{t2i: object|null, edit: object|null}>}
+   */
+  async health() {
+    const [t2i, edit] = await Promise.all([
+      health(this.t2iEndpoint),
+      health(this.editEndpoint),
+    ]);
+    return { t2i, edit };
+  }
+
+  /**
+   * Single-frame generation from a text prompt.
    *
    * @param {string} prompt
    * @param {string} outputPath
    * @param {object} [options]
-   * @param {string} [options.aspectRatio]        one of QWEN_ASPECTS, e.g. '16:9'
-   * @param {number} [options.width]              explicit override, snapped to %16
-   * @param {number} [options.height]
+   * @param {string} [options.aspect_ratio]        '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '3:2' | '2:3'
+   * @param {number} [options.width]               explicit width, snapped to %16
+   * @param {number} [options.height]              explicit height, snapped to %16
    * @param {string} [options.negative_prompt]
    * @param {number} [options.num_inference_steps] default 30
-   * @param {number} [options.true_cfg_scale]      default 4.0
+   * @param {number} [options.true_cfg_scale]      default 3.0 (lower CFG avoids plastic/oversaturated skin)
    * @param {number} [options.seed]
-   * @param {string} [options.output_format]       png | jpeg | webp
+   * @param {string} [options.output_format]       'jpeg' | 'png' (inferred from outputPath by default)
    * @returns {Promise<string>} outputPath
    */
   async generateImage(prompt, outputPath, options = {}) {
@@ -118,8 +126,8 @@ export class QwenImageProvider {
       prompt: this._prompt(prompt),
       mode: 'text2image',
       negative_prompt: options.negative_prompt || DEFAULT_NEGATIVE_PROMPT,
-      num_inference_steps: options.num_inference_steps ?? 30,
-      true_cfg_scale: options.true_cfg_scale ?? 4.0,
+      num_inference_steps: options.num_inference_steps ?? 40,
+      true_cfg_scale: options.true_cfg_scale ?? 3.0,
       output_format: options.output_format || this._formatFor(outputPath),
       ...this._sizeFor(options),
       ...(Number.isInteger(options.seed) && { seed: options.seed }),
@@ -171,9 +179,9 @@ export class QwenImageProvider {
       mode: 'edit',
       images,
       negative_prompt: options.negative_prompt || DEFAULT_NEGATIVE_PROMPT,
-      // Edit mode wants more steps than t2i (schema.py notes 40).
-      num_inference_steps: options.num_inference_steps ?? 40,
-      true_cfg_scale: options.true_cfg_scale ?? 4.0,
+      // Edit mode wants 40-50 steps and 3.0 CFG scale for natural realism.
+      num_inference_steps: options.num_inference_steps ?? 50,
+      true_cfg_scale: options.true_cfg_scale ?? 3.0,
       output_format: options.output_format || this._formatFor(outputPath),
       ...(Number.isInteger(options.seed) && { seed: options.seed }),
     };

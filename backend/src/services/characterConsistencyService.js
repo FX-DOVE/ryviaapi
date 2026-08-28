@@ -55,16 +55,16 @@ export function compileCharacterSeedPrompt(character) {
       '2d_anime':           'anime art style character design, consistent cel-shaded appearance',
       'pixar':              'Pixar 3D animation style, smooth rounded features, consistent character model',
       '3d_cgi_hollywood':   'photorealistic 3D CGI character, consistent facial features, film quality render, natural body proportions',
-      'nollywood_drama':    'RAW photographic, authentic West African features, natural complexion, real human skin texture, realistic body proportions, expressive performance style',
-      'realistic':          'RAW photographic, natural human skin with visible pores, realistic complexion, authentic body proportions — not thin or emaciated, unretouched',
-      'cinematic':          'RAW photographic, DSLR 4K, natural skin tones, film grain, realistic human features, authentic body proportions — not thin or emaciated, unretouched',
+      'nollywood_drama':    '35mm film photograph, authentic West African features, natural complexion, real human skin pores, subtle fine lines, realistic body proportions',
+      'realistic':          '35mm candid film photograph, natural human skin with visible pores, subtle skin imperfections, authentic complexion, natural body proportions, unpolished, unretouched',
+      'cinematic':          '35mm motion picture film still, natural ambient lighting, film grain, realistic human skin with visible pores, authentic body proportions, unretouched',
     };
     if (styleHints[character.animationStyle]) {
       parts.push(styleHints[character.animationStyle]);
     }
   } else {
     // Default: always anchor to photorealism for styles not explicitly listed
-    parts.push('RAW photographic, realistic body proportions, natural skin texture, not thin or emaciated, unretouched');
+    parts.push('35mm film photograph, natural human skin with visible pores and subtle imperfections, realistic authentic complexion, unpolished, unretouched');
   }
 
   // Consistency anchor
