@@ -127,7 +127,7 @@ export function getActionMotionPrompt(actionType, cameraType = 'medium_wide', em
     establishing: 'slow sweeping establishing shot, ambient environmental motion, gentle wind, subtle atmosphere',
     walking:      'natural walking gait, smooth lateral tracking shot, character moving through environment with purpose',
     running:      'dynamic low tracking shot, fast movement, motion blur on background, urgent kinetic energy',
-    talking:      'medium close-up, subtle natural head movement, expressive facial micro-movements, realistic breathing',
+    talking:      'direct focused eye contact with conversation partner, natural lip movements synced to dialogue, authentic facial expressions, characters facing and looking directly at each other without looking away or staring into empty space, realistic subtle breathing',
     fighting:     'dynamic handheld shaky camera, fast impact motion, dramatic freeze-frame moments, kinetic energy',
     crying:       'extreme close-up, tears forming, trembling lips, gentle shallow depth of field, emotional stillness',
     riding:       'wide tracking shot following rider and mount, environmental blur from speed, rhythmic motion',

@@ -145,6 +145,7 @@ Each scene object must have EXACTLY these fields:
 Rules:
 - Vary action types throughout the act (don't just use 'establishing' for every scene)
 - Use 'talking' only when dialogue[] is not empty
+- In talking/dialogue scenes, actionDescription MUST explicitly describe character interaction and direct eye contact (e.g. 'Marcus looks intently into Elena's eyes as he speaks; Elena looks directly back at him'). Never have characters look away into empty space or off-camera during direct conversations.
 - Emotional scenes use close_up or extreme_close_up
 - Action scenes use medium_wide or low_angle
 - Every 8-12 scenes, include an establishing shot to orient the viewer

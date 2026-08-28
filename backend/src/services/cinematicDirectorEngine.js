@@ -152,6 +152,7 @@ Produce a JSON object with this EXACT structure:
               "action": "Exact physical action happening",
               "dialogue": "Exact words spoken (empty string if none)",
               "speaker": "Character name (empty if no dialogue)",
+              "gaze": "Direct eye contact and eyeline: who is looking at whom (e.g. 'Marcus is looking directly into Elena's eyes; Elena maintains direct eye contact with Marcus')",
               "expression": "facial expression (smiling, crying, stern, shocked, etc.)",
               "mood": "emotional undercurrent",
               "props": ["every object visible or handled in this shot"],
@@ -194,6 +195,7 @@ Produce a JSON object with this EXACT structure:
 Rules:
 - Every scene MUST have at least 1 beat, and each beat is ${SEGMENT_DURATION_SEC} seconds
 - A scene with dialogue should have beats for each line of dialogue
+- In dialogue/two-character scenes, explicitly define "gaze" so characters look directly at each other during conversation. Characters speaking to each other MUST maintain direct, focused eye contact and eyeline, and must NOT look away, look outside, or stare into empty space unless explicitly required by the script.
 - Action sequences need multiple beats for different moments
 - Maximum ${MAX_SEGMENTS_PER_SCENE} beats per scene
 - Physical descriptions must be EXTREMELY detailed (skin color, eye shape, hair texture, body build, exact clothing)
@@ -388,6 +390,17 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     ? `UNCHANGED FROM THE PREVIOUS SHOT: ${beat.continuityFromPrevious}`
     : '';
 
+  // Eyeline and Gaze direction blocking
+  let gazeBlock = '';
+  if (beat.gaze) {
+    gazeBlock = `Eyeline & Focus: ${beat.gaze}`;
+  } else if (beat.speaker && beatCharacters.length > 1) {
+    const listeners = beatCharacters.filter(n => n.trim().toLowerCase() !== String(beat.speaker).trim().toLowerCase());
+    gazeBlock = `Eyeline & Gaze: ${beat.speaker} is facing and looking directly into the eyes of ${listeners.join(', ')} while speaking, maintaining natural direct eye contact. The listener looks back directly at ${beat.speaker}. Characters face each other and do NOT look away, do NOT look outside, and do NOT stare into empty space.`;
+  } else if (beat.dialogue && beatCharacters.length > 1) {
+    gazeBlock = `Eyeline & Gaze: Direct eye contact and focused gaze between speakers. Characters face and look directly at each other without looking away.`;
+  }
+
   // Camera description
   const cameraDesc = [
     beat.cameraAngle?.replace(/_/g, ' '),
@@ -399,11 +412,12 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
   // NEVER include: "8K", "ultra detailed", "concept art", "illustration", "render"
   // — these push the diffusion model into over-processed or cartoon space.
   const imagePrompt = [
-    'RAW photo, shot on Arri Alexa, cinematic film still, natural skin tones, film grain',
+    'RAW photo, shot on 35mm film, Kodak Portra, cinematic film still, natural skin tones, film grain',
     `Scene: ${scene.location || 'unspecified location'}`,
     envBlock,
     charBlock,
     `Action: ${beat.action}`,
+    gazeBlock,
     beat.expression ? `Expression: ${beat.expression}` : '',
     stateBlock,
     accessoryBlock,
@@ -420,6 +434,7 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
   const videoPrompt = [
     `${animationStyle} film, cinematic motion, ${SEGMENT_DURATION_SEC} second clip, natural realistic`,
     `Action: ${beat.action}`,
+    gazeBlock,
     beat.dialogue ? `[SPOKEN DIALOGUE by ${beat.speaker || 'character'}]: "${beat.dialogue}"` : '',
     beat.expression ? `Facial expression: ${beat.expression}` : '',
     stateBlock,
@@ -428,7 +443,7 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     `Mood: ${beat.mood || scene.emotion || 'neutral'}`,
     charBlock,
     envBlock,
-    'Smooth natural motion, consistent character appearance, realistic human movement, practical lighting',
+    'Smooth natural motion, consistent character appearance, realistic human movement, practical lighting, focused eyelines',
   ].filter(Boolean).join('. ');
 
   return { imagePrompt, videoPrompt };
