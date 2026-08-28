@@ -21,6 +21,8 @@ import Job    from '../models/Job.js';
 import Scene  from '../models/Scene.js';
 import Asset  from '../models/Asset.js';
 import Project from '../models/Project.js';
+import FilmCharacter from '../models/FilmCharacter.js';
+import Screenplay from '../models/Screenplay.js';
 
 import { JOB_STATUS, SCENE_STATUS, SEGMENT_STATUS, outputDir, tempDir, sceneVidDir } from '../config/constants.js';
 import { logInfo, logWarn, logError } from '../services/logService.js';
@@ -187,17 +189,76 @@ export async function processLockStep(jobId) {
   const characterLocks = {};
   const environmentLocks = {};
 
+  // Load all available FilmCharacters for this job/screenplay/workspace
+  let dbCharacters = [];
+  try {
+    if (job.filmCharacterIds?.length > 0) {
+      dbCharacters = await FilmCharacter.find({ _id: { $in: job.filmCharacterIds } });
+    }
+    if (!dbCharacters.length && job.screenplayId) {
+      const screenplay = await Screenplay.findById(job.screenplayId);
+      const charIds = (screenplay?.characters || []).map(c => c.filmCharacterId).filter(Boolean);
+      if (charIds.length) {
+        dbCharacters = await FilmCharacter.find({ _id: { $in: charIds } });
+      }
+    }
+    if (!dbCharacters.length && job.workspaceId) {
+      const query = { workspaceId: job.workspaceId };
+      if (job.projectId) query.projectId = job.projectId;
+      dbCharacters = await FilmCharacter.find(query);
+    }
+  } catch (err) {
+    console.warn(`[WorkerSteps] Could not load DB characters: ${err.message}`);
+  }
+
   // Generate character lock images
-  const characters = directorPlan.characters || [];
+  const characters = [...(directorPlan.characters || [])];
+
+  // If directorPlan has no characters but DB has characters, add them
+  if (characters.length === 0 && dbCharacters.length > 0) {
+    for (const dbC of dbCharacters) {
+      characters.push({
+        name: dbC.name,
+        role: dbC.role,
+        physicalDescription: dbC.physicalDescription,
+        clothingDefault: dbC.clothingDefault,
+        referenceImageUrl: dbC.referenceImageUrl,
+        referenceImageKey: dbC.referenceImageKey,
+        avatar: dbC.avatar,
+        filmCharacterId: dbC._id,
+      });
+    }
+  }
+
   for (let i = 0; i < characters.length; i++) {
     const char = characters[i];
-    await logInfo(jobId, `Locking character ${i + 1}/${characters.length}: ${char.name}`);
+
+    // Merge matching DB character (match by ID, exact name, or partial name)
+    const match = dbCharacters.find(c =>
+      (char.filmCharacterId && String(c._id) === String(char.filmCharacterId)) ||
+      c.name.trim().toLowerCase() === String(char.name).trim().toLowerCase() ||
+      c.name.trim().toLowerCase().includes(String(char.name).trim().toLowerCase()) ||
+      String(char.name).trim().toLowerCase().includes(c.name.trim().toLowerCase())
+    ) || (dbCharacters.length === 1 && characters.length === 1 ? dbCharacters[0] : null);
+
+    if (match) {
+      char.referenceImageUrl = match.referenceImageUrl || char.referenceImageUrl;
+      char.referenceImageKey = match.referenceImageKey || char.referenceImageKey;
+      char.avatar = match.avatar || char.avatar;
+      char.physicalDescription = match.physicalDescription || char.physicalDescription;
+      char.clothingDefault = match.clothingDefault || char.clothingDefault;
+      char.filmCharacterId = match._id;
+      console.log(`[WorkerSteps] 🔗 Attached DB FilmCharacter "${match.name}" to plan character "${char.name}" (refImage: ${Boolean(char.referenceImageUrl || char.referenceImageKey)})`);
+    }
+
+    await logInfo(jobId, `Locking character ${i + 1}/${characters.length}: ${char.name}${char.referenceImageUrl || char.referenceImageKey ? ' (📸 with uploaded reference)' : ''}`);
 
     try {
       const lock = await createCharacterLock(char, animationStyle, jobId);
       characterLocks[char.name] = {
         lockPrompt: lock.lockPrompt,
         referenceImagePath: lock.referenceImagePath,
+        referenceUsed: lock.referenceUsed,
       };
     } catch (err) {
       console.error(`[WorkerSteps] Character lock failed for "${char.name}": ${err.message}`);
@@ -205,6 +266,7 @@ export async function processLockStep(jobId) {
       characterLocks[char.name] = {
         lockPrompt: buildCharacterLockPrompt(char, animationStyle),
         referenceImagePath: null,
+        referenceUsed: false,
       };
     }
   }

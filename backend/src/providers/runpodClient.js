@@ -406,7 +406,22 @@ export async function toImagePayload(ref) {
     }
   }
 
-  // Local file path — read and encode
+  // Local mock-storage relative path
+  if (typeof ref === 'string' && ref.startsWith('/mock-storage')) {
+    const localMock = path.join(process.cwd(), 'storage', 'public', ref.replace(/^\//, ''));
+    if (fs.existsSync(localMock)) {
+      return encodeImageFile(localMock);
+    }
+  }
+
+  // Local file path — check existence and encode
+  if (typeof ref === 'string') {
+    const resolved = path.isAbsolute(ref) ? ref : path.resolve(process.cwd(), ref);
+    if (fs.existsSync(resolved)) {
+      return encodeImageFile(resolved);
+    }
+  }
+
   return encodeImageFile(ref);
 }
 

@@ -94,16 +94,37 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   // image MUST drive generation — if it fails, we surface an explicit error
   // rather than silently falling back to text-to-image (which produces an
   // unrelated character and is the primary source of this bug).
-  const uploadedRef = character.referenceImagePath   // from Film Characters UI
+  let uploadedRef = character.referenceImagePath   // from Film Characters UI
     || character.referenceImageUrl
     || character.avatar
     || null;
 
+  // If we have a cloud key, get a fresh presigned URL so it never fails on expired links
+  if (character.referenceImageKey) {
+    try {
+      const { getSignedUrl } = await import('./storageService.js');
+      const freshUrl = await getSignedUrl(character.referenceImageKey, 7200);
+      if (freshUrl) {
+        uploadedRef = freshUrl;
+      }
+    } catch (e) {
+      console.warn(`[ConsistencyLock] Could not refresh signed URL for key ${character.referenceImageKey}:`, e.message);
+    }
+  }
+
+  // If uploadedRef is a local mock-storage path, resolve it to the full absolute path
+  if (typeof uploadedRef === 'string' && uploadedRef.startsWith('/mock-storage')) {
+    const localMock = path.join(process.cwd(), 'storage', 'public', uploadedRef.replace(/^\//, ''));
+    if (fs.existsSync(localMock)) {
+      uploadedRef = localMock;
+    }
+  }
+
   let referenceUsed = false;
 
   if (uploadedRef) {
-    const isHttp = /^https?:\/\//i.test(uploadedRef);
-    const isLocalFile = !isHttp && typeof uploadedRef === 'string' && fs.existsSync(uploadedRef);
+    const isHttp = typeof uploadedRef === 'string' && /^https?:\/\//i.test(uploadedRef);
+    const isLocalFile = typeof uploadedRef === 'string' && !isHttp && fs.existsSync(uploadedRef);
 
     if (isHttp || isLocalFile) {
       console.log(

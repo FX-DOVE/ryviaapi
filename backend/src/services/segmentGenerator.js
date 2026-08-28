@@ -76,20 +76,51 @@ function normalizeCharacterLocks(characterLocks = {}) {
  * Reference sheets for the characters actually in this beat, speaker first —
  * the reference budget is 3 and identity matters most for whoever is talking.
  */
-function characterReferencesFor(beat, scene, locks) {
+function characterReferencesFor(beat, scene, locks = {}) {
   const names = [];
   if (beat?.speaker) names.push(beat.speaker);
   for (const name of scene?.characterNames || []) names.push(name);
 
+  const lockKeys = Object.keys(locks);
   const seen = new Set();
   const refs = [];
+
   for (const name of names) {
-    const key = String(name || '').trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    const ref = locks[key]?.referenceImagePath;
-    if (ref && fs.existsSync(ref)) refs.push(ref);
+    const raw = String(name || '').trim();
+    if (!raw) continue;
+    const clean = raw.toLowerCase();
+    if (seen.has(clean)) continue;
+    seen.add(clean);
+
+    // 1. Exact match
+    let hit = locks[raw]?.referenceImagePath;
+
+    // 2. Case-insensitive / normalized match
+    if (!hit || !fs.existsSync(hit)) {
+      const matchKey = lockKeys.find(
+        (k) => k.trim().toLowerCase() === clean
+          || clean.includes(k.trim().toLowerCase())
+          || k.trim().toLowerCase().includes(clean)
+      );
+      if (matchKey) hit = locks[matchKey]?.referenceImagePath;
+    }
+
+    if (hit && fs.existsSync(hit) && !refs.includes(hit)) {
+      refs.push(hit);
+    }
   }
+
+  // 3. Fallback: If no character matched specifically by name, but there are character locks available on disk, include them
+  if (refs.length === 0 && lockKeys.length > 0) {
+    for (const key of lockKeys) {
+      const pathCandidate = locks[key]?.referenceImagePath;
+      if (pathCandidate && fs.existsSync(pathCandidate) && !refs.includes(pathCandidate)) {
+        refs.push(pathCandidate);
+        if (refs.length >= MAX_EDIT_REFERENCES) break;
+      }
+    }
+  }
+
   return refs;
 }
 
@@ -100,11 +131,9 @@ function existingPath(candidate) {
 /**
  * Build one keyframe.
  *
- * With a wide plate available (the previous segment's last frame, or the
- * environment lock) the frame is produced by *editing* that plate, which is what
- * keeps the shot continuous. Without one — only the very first shot of a film,
- * or when the environment lock failed — it falls back to text-to-image, followed
- * by an identity pass against the character sheets so faces still match.
+ * When reference images exist (either previous frame plate OR character lock sheets),
+ * the keyframe is generated directly with Qwen-Image-Edit using those references.
+ * Text-to-image is ONLY used when ZERO references exist in the entire project.
  *
  * @returns {Promise<string>} keyframePath
  */
@@ -118,49 +147,34 @@ async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = 
 
   const editOptions = {
     negative_prompt: REALISM_NEGATIVE_PROMPT,
-    num_inference_steps: 45,
+    num_inference_steps: 50,
   };
 
-  if (plate) {
+  // If ANY reference image is available (plate or character photo), use Qwen-Image-Edit directly!
+  if (refs.length > 0) {
     const instruction = [
-      'Continue this exact scene as the next shot of the same film.',
-      'Keep the same characters — identical faces, skin tones, hair, wardrobe — and the same location.',
+      plate
+        ? 'Continue this exact scene as the next shot of the same film. Keep the same characters — identical faces, skin tones, hair, wardrobe — and the same location.'
+        : 'Generate a cinematic film still featuring this exact person. Keep their IDENTICAL face, facial features, skin tone, hair, age, and natural body proportions from the reference image.',
       'Do NOT change skin color, do NOT smooth or airbrush skin, do NOT alter facial features.',
-      'Maintain natural human skin texture, realistic lighting, film grain.',
+      'Maintain natural human skin texture, realistic lighting, film grain, RAW photography quality.',
       imagePrompt,
     ].join(' ');
+
+    console.log(`[SegmentGenerator] 📸 ${label}: generating keyframe via Qwen-Image-Edit with ${refs.length} reference(s)...`);
     await images.edit(refs, instruction, keyframePath, editOptions);
-    console.log(`[SegmentGenerator] ${label}: keyframe re-anchored from ${refs.length} reference(s)`);
+    console.log(`[SegmentGenerator] ✅ ${label}: keyframe generated with Qwen-Image-Edit using references`);
     return keyframePath;
   }
 
+  // Pure text-to-image fallback ONLY when NO reference images exist at all
+  console.log(`[SegmentGenerator] 🖼️ ${label}: no reference images found — generating from text...`);
   await images.generate(imagePrompt, keyframePath, {
     width: KEYFRAME_WIDTH,
     height: KEYFRAME_HEIGHT,
     negative_prompt: REALISM_NEGATIVE_PROMPT,
-    num_inference_steps: 40,
+    num_inference_steps: 50,
   });
-
-  if (characterRefs.length) {
-    // Identity pass: match exact faces from the character lock sheets.
-    const identityRefs = [keyframePath, ...characterRefs].slice(0, MAX_EDIT_REFERENCES);
-    const identityPath = keyframePath.replace(/(\.[a-z0-9]+)$/i, '_locked$1');
-    try {
-      await images.edit(
-        identityRefs,
-        'The first image is a scene frame. The other images are character reference portraits. '
-        + 'Replace the people in the first image with those exact characters: same faces, same skin tones, '
-        + 'same hair, same ethnicity. Keep the BACKGROUND, COMPOSITION, FRAMING, and LIGHTING completely identical. '
-        + 'Do NOT smooth skin, do NOT cartoon-ize. Realistic natural skin texture only.',
-        identityPath,
-        editOptions,
-      );
-      await fs.promises.copyFile(identityPath, keyframePath);
-      console.log(`[SegmentGenerator] ${label}: identity pass applied (${characterRefs.length} sheet(s))`);
-    } catch (err) {
-      console.warn(`[SegmentGenerator] ${label}: identity pass failed, keeping t2i frame — ${err.message}`);
-    }
-  }
 
   return keyframePath;
 }
