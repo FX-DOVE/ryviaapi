@@ -92,6 +92,7 @@ export async function processDirectingStep(jobId) {
   // film from an empty string and then overwrite the screenplay's scenes with it.
   let sourceScript = rawScript;
   let directorNotes = job.input.styleGuide || '';
+  let screenplayScenes = null;
   if (job.screenplayId) {
     const { default: Screenplay } = await import('../models/Screenplay.js');
     const { renderScreenplayForDirector } = await import('../services/screenplayService.js');
@@ -101,7 +102,9 @@ export async function processDirectingStep(jobId) {
     sourceScript = renderScreenplayForDirector(screenplay);
     directorNotes = [directorNotes, screenplay.additionalSettings]
       .filter(Boolean).join('\n');
-    await logInfo(jobId, `📖 Directing from approved screenplay "${screenplay.title}" (${screenplay.scenes?.length || 0} scenes, ${sourceScript.length} chars)`);
+    // Capture approved scenes for dialogue reconciliation
+    screenplayScenes = screenplay.scenes || [];
+    await logInfo(jobId, `📖 Directing from approved screenplay "${screenplay.title}" (${screenplayScenes.length} scenes, ${sourceScript.length} chars)`);
   } else if (!sourceScript.trim()) {
     throw new Error(`[WorkerSteps] Job ${jobId} has no script, prompt or screenplay to direct`);
   }
@@ -114,6 +117,7 @@ export async function processDirectingStep(jobId) {
     animationStyle,
     additionalNotes: directorNotes,
     jobId,
+    screenplayScenes, // pass approved scenes for dialogue reconciliation
   });
 
   // Stage 4: Plan generation strategies for each beat

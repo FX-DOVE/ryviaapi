@@ -96,7 +96,7 @@ export function parseAndRepairJson(rawText) {
  */
 export async function decomposeScript({
   rawScript, title, genre = 'drama', animationStyle = 'cinematic',
-  additionalNotes = '', jobId = '',
+  additionalNotes = '', jobId = '', screenplayScenes = null,
 }) {
   console.log(`[CinematicDirector] Stage 1: Decomposing script for "${title}"...`);
 
@@ -111,7 +111,12 @@ export async function decomposeScript({
     );
   }
 
-  const systemPrompt = `You are an elite film director and script supervisor. Your job is to take a raw screenplay/script and break it down into a precise production plan. You understand acts, scenes, beats, character blocking, camera language, emotional arcs, and pacing. You plan for 8-second video segments — each scene requires multiple segments to complete.`;
+  const systemPrompt = `You are an elite film director and script supervisor. Your job is to take a raw screenplay/script and break it down into a precise production plan. You understand acts, scenes, beats, character blocking, camera language, emotional arcs, and pacing. You plan for 8-second video segments — each scene requires multiple segments to complete.
+
+CRITICAL DIRECTIVE — DIALOGUE FIDELITY:
+When the script includes dialogue lines marked as FINAL or VERBATIM, you MUST preserve them EXACTLY as written. Do NOT paraphrase, rewrite, summarize, or invent new dialogue. The screenplay's dialogue has been approved by the writer. Your job is to DIRECT it (plan camera, blocking, beats), not REWRITE it.
+
+If a scene has dialogue, each dialogue line should become its own beat. The beat's "dialogue" field must contain the EXACT original line from the script. The beat's "action" field describes the physical performance during that line.`;
 
   const userPrompt = `Analyze this raw script and decompose it into a detailed production plan.
 
@@ -124,6 +129,8 @@ RAW SCRIPT:
 """
 ${scriptForPrompt}
 """
+
+DIALOGUE RULE: Any dialogue marked "FINAL" or "VERBATIM" in the script MUST appear word-for-word in the beat's "dialogue" field. Do NOT change, paraphrase, or invent new dialogue lines. If the script says a character says "You married my sister behind my back, Emeka", the beat must contain that EXACT line.
 
 Produce a JSON object with this EXACT structure:
 {
@@ -216,6 +223,14 @@ Output ONLY the raw JSON. No markdown, no explanation.`;
 
   const plan = parseAndRepairJson(text);
 
+  // ── Post-decomposition: Reconcile dialogue with approved screenplay ──
+  // When the source is a screenplay, the director sometimes paraphrases dialogue
+  // despite being told not to. This walk replaces any invented dialogue in the
+  // plan's beats with the exact approved lines from the original screenplay scenes.
+  if (screenplayScenes?.length > 0) {
+    reconcileDialogue(plan, screenplayScenes);
+  }
+
   // Validate and number scenes/beats globally
   let globalScene = 0;
   let globalBeat = 0;
@@ -241,6 +256,69 @@ Output ONLY the raw JSON. No markdown, no explanation.`;
 
   console.log(`[CinematicDirector] ✅ Decomposed: ${plan.acts?.length || 0} acts, ${globalScene} scenes, ${globalBeat} beats`);
   return plan;
+}
+
+/**
+ * Reconcile director-generated dialogue with approved screenplay dialogue.
+ *
+ * The director is instructed to use verbatim dialogue, but LLMs frequently
+ * paraphrase. This function walks through each director-plan scene, matches it
+ * to the closest screenplay scene (by scene number), and replaces any beat
+ * dialogue that diverges from the approved lines.
+ *
+ * This is a HARD constraint: the screenplay dialogue is law.
+ */
+function reconcileDialogue(plan, screenplayScenes) {
+  if (!plan?.acts || !screenplayScenes?.length) return;
+
+  // Index screenplay scenes by sceneNumber for fast lookup
+  const spByNumber = {};
+  for (const sp of screenplayScenes) {
+    spByNumber[sp.sceneNumber] = sp;
+  }
+
+  let reconciled = 0;
+  let total = 0;
+
+  for (const act of plan.acts) {
+    for (const scene of act.scenes || []) {
+      const sp = spByNumber[scene.globalSceneNumber || scene.sceneNumber];
+      if (!sp?.dialogue?.length) continue;
+
+      // Collect the approved dialogue lines in order
+      const approvedLines = sp.dialogue
+        .filter(d => d?.line)
+        .map(d => ({ speaker: d.speaker || '', line: d.line }));
+
+      if (approvedLines.length === 0) continue;
+
+      // Walk beats with dialogue and replace with approved lines
+      let approvedIdx = 0;
+      for (const beat of scene.beats || []) {
+        total++;
+        if (!beat.dialogue && !beat.speaker) continue;
+        if (approvedIdx >= approvedLines.length) continue;
+
+        const approved = approvedLines[approvedIdx];
+
+        // Check if the beat's dialogue matches the approved line
+        const beatDialogue = String(beat.dialogue || '').trim();
+        const approvedLine = String(approved.line || '').trim();
+
+        if (beatDialogue && approvedLine && beatDialogue !== approvedLine) {
+          // Director paraphrased — replace with the approved version
+          beat.dialogue = approved.line;
+          beat.speaker = approved.speaker || beat.speaker;
+          reconciled++;
+        }
+        approvedIdx++;
+      }
+    }
+  }
+
+  if (reconciled > 0) {
+    console.log(`[CinematicDirector] 🔄 Dialogue reconciliation: replaced ${reconciled} paraphrased lines with approved screenplay dialogue`);
+  }
 }
 
 /**

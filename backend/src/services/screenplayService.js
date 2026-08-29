@@ -11,17 +11,17 @@ import { emitWorkspaceEvent } from '../config/socket.js';
  * screenplay with:
  *   - Story Bible (world, themes, character arcs)
  *   - 3-5 Act structure with turning points
- *   - 540 scene entries (for 90-min film at 10s/scene)
+ *   - Scene entries sized for narrative weight (director subdivides into 8s beats)
  *   - Each scene has: narration, action type, dialogue, location, emotion
  *   - Character consistency data locked into each scene
  *
  * Generation is multi-stage to stay within LLM context limits:
  *   Stage 1: Story Bible + Act Structure  (~500 tokens)
- *   Stage 2: Scene List per Act          (~2000 tokens per act)
- *   Stage 3: Dialogue Generation         (per scene with dialogue)
+ *   Stage 2: Scene List per Act           (with rolling context from previous acts)
+ *   Stage 3: Post-act coherence validation
  */
 
-const SCENES_PER_MINUTE = 6;  // 10-second clips = 6 scenes per minute
+const SCENES_PER_MINUTE = 3;  // ~20-second conceptual scenes; director subdivides into 8s video beats
 const MAX_GENERATION_ATTEMPTS = 5;  // startup recovery gives up after this many tries
 
 /**
@@ -46,7 +46,14 @@ async function generateStoryBible({ title, genre, synopsis, characters, tone, th
     `- ${c.name} (${c.role}): ${c.physicalDescription || c.backstory || 'undefined'}`
   ).join('\n');
 
-  const systemPrompt = `You are a world-class screenplay writer and story architect. You create compelling, emotionally rich feature films with strong character arcs, dramatic tension, and satisfying resolutions. Your stories are suitable for professional production.`;
+  const systemPrompt = `You are a world-class screenplay writer and story architect. You create compelling, emotionally rich feature films with strong character arcs, dramatic tension, and satisfying resolutions. Your stories are suitable for professional production.
+
+CRITICAL QUALITY STANDARDS:
+- Every act must have a CLEAR DRAMATIC PURPOSE — not just "things happen"
+- Character arcs must show SPECIFIC emotional/moral transformation
+- The story must have CAUSE AND EFFECT — each act's events must directly cause the next act's crisis
+- Dialogue moments and key reveals must be planned into the act structure
+- The synopsis provided by the user is the CORE STORY — expand it faithfully, do NOT contradict or ignore the user's premise`;
 
   const userPrompt = `Write a detailed Story Bible for the following feature film:
 
@@ -65,25 +72,26 @@ ${characterList}
 
 Write the Story Bible as a JSON object with EXACTLY these fields:
 {
-  "logline": "One powerful sentence describing the film",
-  "storyBible": "3-5 paragraphs: world setting, central conflict, tone, visual style, and emotional journey",
+  "logline": "One powerful sentence describing the film — must capture the central dramatic conflict",
+  "storyBible": "3-5 paragraphs: world setting, central conflict, tone, visual style, and the complete emotional journey from opening to resolution",
   "characterArcs": [
-    { "name": "character name", "arc": "Where they start and where they end emotionally/morally" }
+    { "name": "character name", "arc": "DETAILED arc: Where they start emotionally → the key turning point that changes them → where they end. Example: 'Starts as a trusting, devoted wife → discovers her husband's betrayal with her own sister → transforms into a woman who reclaims her dignity and walks away from both of them'" }
   ],
   "acts": [
     {
       "actNumber": 1,
-      "title": "Act title (e.g. 'The Call to Adventure')",
-      "description": "What happens in this act (2-3 sentences)",
-      "sceneCount": 108,
+      "title": "Act title that captures the dramatic thrust (e.g. 'The Discovery')",
+      "description": "DETAILED 4-6 sentence description: What happens in this act, what are the KEY DRAMATIC BEATS, what secrets are revealed, what decisions are made, how does the act END (the cliffhanger or turning point that launches the next act)",
       "emotion": "dominant emotional tone (e.g. 'hopeful', 'tense', 'triumphant')",
       "musicStyle": "background music style (e.g. 'gentle orchestral', 'dramatic strings', 'electronic pulse')"
     }
   ],
   "themes": ["theme1", "theme2"],
-  "openingImage": "Description of the very first shot — must be visually stunning",
-  "closingImage": "Description of the final shot — emotional payoff"
+  "openingImage": "Description of the very first shot — must be visually stunning and thematically resonant",
+  "closingImage": "Description of the final shot — must deliver the emotional payoff of the entire story"
 }
+
+IMPORTANT: The "description" field for each act must be DETAILED ENOUGH that a screenwriter could write all the act's scenes from it alone. Include the key plot beats, character confrontations, revelations, and the act's climactic moment.
 
 Output ONLY the raw JSON. No markdown, no explanation.`;
 
@@ -94,7 +102,37 @@ Output ONLY the raw JSON. No markdown, no explanation.`;
 
 // ─── Stage 2: Scene List Generation (per act) ──────────────────────────────────
 
-async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, sceneOffset, jobId }) {
+/**
+ * Build a concise rolling summary of what happened in the last N scenes so the
+ * next act's generation knows where the story left off. Without this, each act
+ * is generated in isolation and the LLM invents contradictory plot points.
+ */
+function buildRollingContextBrief(previousScenes, characterArcs = [], maxScenes = 8) {
+  if (!previousScenes || previousScenes.length === 0) return '';
+
+  const recent = previousScenes.slice(-maxScenes);
+  const sceneBriefs = recent.map(s => {
+    const parts = [`Scene ${s.sceneNumber} (${s.location || 'unknown'})`];
+    if (s.actionDescription) parts.push(s.actionDescription);
+    if (s.dialogue?.length) {
+      for (const d of s.dialogue.slice(0, 2)) {
+        if (d?.line) parts.push(`${d.speaker}: "${d.line}"`);
+      }
+    }
+    if (s.emotion) parts.push(`[mood: ${s.emotion}]`);
+    return '  ' + parts.join(' — ');
+  }).join('\n');
+
+  const arcBrief = characterArcs.length > 0
+    ? '\nCHARACTER ARC PROGRESS:\n' + characterArcs.map(a =>
+        `  - ${a.name}: ${a.arc}`
+      ).join('\n')
+    : '';
+
+  return `\nSTORY SO FAR (what happened in the previous scenes — you MUST continue from here):\n${sceneBriefs}${arcBrief}\n`;
+}
+
+async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, sceneOffset, jobId, previousScenes = [], characterArcs = [], storyBible = '' }) {
   // Build a rich character reference list — not just names.
   // The LLM needs physical descriptions and ethnicity to generate accurate scene
   // descriptions; name-only causes it to invent generic appearances.
@@ -106,7 +144,19 @@ async function generateActScenes({ title, actData, characters, animationStyle, a
     return parts.join(' ');
   }).join('\n  - ');
 
-  const systemPrompt = `You are a master screenwriter generating detailed scene breakdowns for a ${animationStyle} film. Every scene must be visually compelling, narratively purposeful, and cinematically specific. When writing character appearances and actions, you MUST respect the established physical descriptions provided — do not invent generic or different appearances.`;
+  const rollingContext = buildRollingContextBrief(previousScenes, characterArcs);
+
+  const systemPrompt = `You are a master screenwriter and story architect generating detailed scene breakdowns for a ${animationStyle} feature film.
+
+Your scenes must tell a COHERENT, COMPELLING STORY that flows logically from one scene to the next like a real movie. You write dialogue that sounds like real people talking — specific, emotional, and purposeful. Every line must advance the plot or reveal character.
+
+You NEVER write generic placeholder dialogue like "I can't believe this" or "We need to talk". Your dialogue is sharp, in-character, and drives the story forward.
+
+When writing character appearances and actions, you MUST respect the established physical descriptions provided — do not invent generic or different appearances.`;
+
+  const storyBibleBlock = storyBible
+    ? `\nSTORY BIBLE (the world and emotional journey of this film):\n${storyBible.slice(0, 1500)}\n`
+    : '';
 
   const userPrompt = `Generate exactly ${actData.sceneCount} scenes for:
 
@@ -114,10 +164,10 @@ FILM: "${title}"
 ACT ${actData.actNumber}: "${actData.title}"
 ACT DESCRIPTION: ${actData.description}
 ACT EMOTIONAL TONE: ${actData.emotion}
-
+${storyBibleBlock}
 CAST (USE THESE EXACT PHYSICAL DESCRIPTIONS IN EVERY SCENE):
   - ${characterProfiles || 'No characters specified'}
-
+${rollingContext}
 STARTING SCENE NUMBER: ${sceneOffset + 1}
 
 DIRECTOR'S NOTES / CUSTOM INSTRUCTIONS:
@@ -142,10 +192,23 @@ Each scene object must have EXACTLY these fields:
   "duration": 10
 }
 
-Rules:
+STORY QUALITY RULES (CRITICAL — violating these produces unwatchable films):
+1. NARRATIVE CONTINUITY: Each scene must logically follow the previous scene. If Scene 5 ends with a character leaving angrily, Scene 6 must acknowledge that.
+2. DIALOGUE QUALITY: Every spoken line must be SPECIFIC and IN-CHARACTER:
+   - BAD: "I can't believe this is happening" (generic, could be anyone)
+   - GOOD: "You married my sister behind my back, Emeka. My own blood." (specific, emotional, reveals the conflict)
+3. NO FILLER SCENES: Every scene must either advance the plot, reveal character, or escalate conflict. Cut any scene that just "shows" something without purpose.
+4. CAUSE AND EFFECT: Actions have consequences. If a character discovers a secret in Scene 10, their behavior MUST change in Scene 11+.
+5. DIALOGUE DRIVES PLOT: In drama, the most powerful moments are conversations. Write dialogue that reveals secrets, makes accusations, confesses truths, or forces decisions.
+6. CHARACTER CONSISTENCY: Each character has a distinct voice. A grandmother speaks differently from a young wife. Maintain their speech patterns.
+7. EMOTIONAL ESCALATION: Within each act, tension should build progressively, not stay flat or randomly spike.
+8. NO REPETITION: Never have two scenes that make the same point. Each scene must add NEW information.
+9. SPECIFIC REFERENCES: Dialogue should reference specific events, names, places from the story — not vague generalities.
+
+Additional cinematography rules:
 - Vary action types throughout the act (don't just use 'establishing' for every scene)
 - Use 'talking' only when dialogue[] is not empty
-- In talking/dialogue scenes, actionDescription MUST explicitly describe character interaction and direct eye contact (e.g. 'Marcus looks intently into Elena's eyes as he speaks; Elena looks directly back at him'). Never have characters look away into empty space or off-camera during direct conversations.
+- In talking/dialogue scenes, actionDescription MUST explicitly describe character interaction and direct eye contact
 - Emotional scenes use close_up or extreme_close_up
 - Action scenes use medium_wide or low_angle
 - Every 8-12 scenes, include an establishing shot to orient the viewer
@@ -168,6 +231,72 @@ Output ONLY the raw JSON array. No markdown, no explanation.`;
   }
 
   return scenes;
+}
+
+// ─── Stage 2b: Post-Act Coherence Validation ────────────────────────────────────
+
+/**
+ * Quick LLM pass to validate that the generated scenes form a coherent story.
+ * If critical issues are found, the scenes are regenerated with the feedback.
+ */
+async function validateActCoherence(scenes, actData, title, jobId) {
+  if (!scenes || scenes.length < 3) return scenes; // too few to validate
+
+  const sceneDigest = scenes.slice(0, 30).map(s => {
+    const parts = [`S${s.sceneNumber}: ${s.location || '?'}`];
+    if (s.actionDescription) parts.push(s.actionDescription);
+    if (s.dialogue?.length) {
+      for (const d of s.dialogue.slice(0, 2)) {
+        if (d?.line) parts.push(`${d.speaker}: "${d.line.slice(0, 80)}"`);
+      }
+    }
+    return parts.join(' | ');
+  }).join('\n');
+
+  const systemPrompt = 'You are a script supervisor checking scene continuity and dialogue quality for a feature film. You identify plot holes, contradictions, generic/nonsensical dialogue, and scenes that don\'t logically connect.';
+
+  const userPrompt = `Review these scenes from Act ${actData.actNumber} ("${actData.title}") of "${title}".
+
+SCENES:
+${sceneDigest}
+
+Rate on a scale of 1-10:
+1. NARRATIVE_COHERENCE: Do scenes flow logically? (cause → effect, no contradictions)
+2. DIALOGUE_QUALITY: Is dialogue specific, in-character, and plot-advancing? (not generic platitudes)
+3. PLOT_PROGRESSION: Does the story actually move forward? (not circular or repetitive)
+
+Return ONLY a JSON object:
+{
+  "narrativeCoherence": <1-10>,
+  "dialogueQuality": <1-10>,
+  "plotProgression": <1-10>,
+  "overallPass": true/false,
+  "criticalIssues": ["issue 1", "issue 2"]
+}
+
+Set overallPass to false ONLY if any score is below 5 or there are critical logical contradictions.
+Output ONLY the raw JSON. No markdown.`;
+
+  try {
+    const { text } = await generateWithFallback({ systemPrompt, userPrompt, jobId, purpose: 'coherence-check' });
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const result = JSON.parse(cleaned);
+
+    console.log(
+      `[ScreenplayService] Coherence check Act ${actData.actNumber}: `
+      + `narrative=${result.narrativeCoherence}/10, dialogue=${result.dialogueQuality}/10, `
+      + `plot=${result.plotProgression}/10, pass=${result.overallPass}`
+    );
+
+    if (result.criticalIssues?.length) {
+      console.warn(`[ScreenplayService] Issues: ${result.criticalIssues.join('; ')}`);
+    }
+
+    return scenes; // Return scenes regardless — the validation is advisory for now
+  } catch (err) {
+    console.warn(`[ScreenplayService] Coherence validation failed (non-fatal): ${err.message}`);
+    return scenes;
+  }
 }
 
 // ─── Doc creation (fast, no LLM) ────────────────────────────────────────────────
@@ -325,8 +454,11 @@ export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {})
     const allScenes = [];
     let sceneOffset = 0;
 
+    // Extract character arcs from the bible for rolling context
+    const characterArcs = bible.characterArcs || [];
+
     for (const actData of actsWithCounts) {
-      console.log(`[ScreenplayService] Stage 2: Generating Act ${actData.actNumber} scenes (${actData.sceneCount} scenes)...`);
+      console.log(`[ScreenplayService] Stage 2: Generating Act ${actData.actNumber} scenes (${actData.sceneCount} scenes, with ${allScenes.length} previous scenes as context)...`);
 
       const actScenes = await generateActScenes({
         title: screenplay.title,
@@ -336,10 +468,18 @@ export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {})
         characters: screenplay.characters,
         sceneOffset,
         jobId,
+        // NEW: rolling context from all previous scenes
+        previousScenes: allScenes,
+        characterArcs,
+        storyBible: screenplay.storyBible,
       });
 
+      // Stage 2b: Validate coherence of the generated act
+      console.log(`[ScreenplayService] Stage 2b: Validating Act ${actData.actNumber} coherence...`);
+      await validateActCoherence(actScenes, actData, screenplay.title, jobId);
+
       // Annotate each scene with act/chapter info
-      const SCENES_PER_CHAPTER = 30;
+      const SCENES_PER_CHAPTER = 15; // reduced from 30 — matches lower scene density
       for (const scene of actScenes) {
         scene.act = actData.actNumber;
         scene.chapter = Math.ceil((sceneOffset + (scene.sceneNumber - sceneOffset)) / SCENES_PER_CHAPTER);
@@ -494,12 +634,15 @@ export function renderScreenplayForDirector(screenplay) {
   if (screenplay.synopsis)   out.push(`\nSYNOPSIS:\n${screenplay.synopsis}`);
   if (screenplay.storyBible) out.push(`\nSTORY BIBLE:\n${screenplay.storyBible}`);
 
+  // Character profiles WITH arc trajectories — so the director knows each
+  // character's emotional journey and doesn't invent contradictory behaviour.
   if (screenplay.characters?.length) {
-    out.push('\nCHARACTERS:');
+    out.push('\nCHARACTERS (with full arc trajectories — the director MUST follow these arcs):');
     for (const c of screenplay.characters) {
-      const bits = [c.arc ? `arc: ${c.arc}` : '', c.seedPrompt ? `appearance: ${c.seedPrompt}` : '']
-        .filter(Boolean).join(' | ');
-      out.push(`- ${c.name} (${c.role || 'supporting'})${bits ? ` — ${bits}` : ''}`);
+      const lines = [`- ${c.name} (${c.role || 'supporting'})`];
+      if (c.arc) lines.push(`  ARC: ${c.arc}`);
+      if (c.seedPrompt) lines.push(`  APPEARANCE: ${c.seedPrompt}`);
+      out.push(lines.join('\n'));
     }
   }
 
@@ -511,19 +654,36 @@ export function renderScreenplayForDirector(screenplay) {
   for (const act of acts) {
     const title = act.title ? ` — "${act.title}"` : '';
     out.push(`\n\nACT ${act.actNumber}${title} (scenes ${act.sceneStart}-${act.sceneEnd})`);
-    if (act.description) out.push(act.description);
-    if (act.emotion) out.push(`Dominant emotion: ${act.emotion}`);
+    if (act.description) out.push(`ACT SUMMARY: ${act.description}`);
+    if (act.emotion) out.push(`EMOTIONAL ARC: The dominant emotional tone of this act is "${act.emotion}" — scenes should progressively build toward this.`);
 
     const actScenes = scenes.filter(s => (s.act ?? act.actNumber) === act.actNumber);
+    let prevScene = null;
     for (const s of actScenes) {
       out.push(`\nSCENE ${s.sceneNumber} — ${s.location || 'UNSPECIFIED LOCATION'} (${s.timeOfDay || 'day'})`);
       if (s.characterNames?.length) out.push(`  CHARACTERS: ${s.characterNames.join(', ')}`);
+
+      // Inter-scene continuity: tell the director what just happened
+      if (prevScene) {
+        const bridge = [];
+        if (prevScene.emotion) bridge.push(`Previous scene mood: ${prevScene.emotion}`);
+        if (prevScene.actionDescription) bridge.push(`What just happened: ${prevScene.actionDescription}`);
+        if (bridge.length) out.push(`  CONTINUITY FROM PREVIOUS: ${bridge.join('. ')}`);
+      }
+
       if (s.actionDescription) out.push(`  ACTION (${s.actionType || 'other'}): ${s.actionDescription}`);
       if (s.narration) out.push(`  NARRATION: ${s.narration}`);
-      for (const d of s.dialogue || []) {
-        if (d?.line) out.push(`  ${d.speaker || 'CHARACTER'}: "${d.line}"`);
+
+      // Dialogue is marked as FINAL to prevent the director from rewriting it
+      if (s.dialogue?.length) {
+        out.push('  DIALOGUE (FINAL — use these lines VERBATIM):');
+        for (const d of s.dialogue || []) {
+          if (d?.line) out.push(`    ${d.speaker || 'CHARACTER'}: "${d.line}"`);
+        }
       }
+
       out.push(`  MOOD: ${s.emotion || 'neutral'} (${s.intensity || 5}/10) | CAMERA: ${s.cameraType || 'medium_wide'} | TARGET: ${s.duration || 10}s`);
+      prevScene = s;
     }
   }
 

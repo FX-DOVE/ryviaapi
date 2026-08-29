@@ -14,7 +14,7 @@ import { tempDir } from '../config/constants.js';
 
 const execAsync = promisify(exec);
 
-const SCENES_PER_CHAPTER = 30; // 30 scenes × 10s = 5 minutes per chapter
+const SCENES_PER_CHAPTER = 15; // 15 scenes × ~20s conceptual = ~5 minutes per chapter
 
 /**
  * FEATURE FILM ORCHESTRATOR
