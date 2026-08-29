@@ -14,11 +14,15 @@ const beatSchema = new mongoose.Schema({
   strategy:         { type: String, enum: ['anchor', 'continuation', 'angle_change', 'frame_bridge', 'reaction'], default: 'anchor' },
   duration:         { type: Number, default: 8 },
 
+  // ── Studio Directing & Acting Payload ────────────────────────
+  gaze:                { type: String, default: '' },
+  voiceDirection:      { type: String, default: '' },
+  audioCues:           { type: String, default: '' },
+  startFrameVisual:    { type: String, default: '' },
+  endFrameVisual:      { type: String, default: '' },
+  emotionalContinuity: { type: String, default: '' },
+
   // ── Continuity payload (drives the image prompts) ────────────
-  // Without these the props, worn items and physical states the director planned
-  // are dropped by strict mode on insert, and every shot is rebuilt from scratch.
-  // Mixed rather than Map: `toObject()` hands a Map back as a Map, and the prompt
-  // builder walks these with Object.entries(), which would silently see nothing.
   props:                  [{ type: String }],
   accessories:            { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   characterState:         { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
