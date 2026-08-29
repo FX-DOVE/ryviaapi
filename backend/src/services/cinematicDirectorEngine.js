@@ -166,8 +166,8 @@ Produce a JSON object with this EXACT structure:
               "accessories": { "Character Name": "what this character wears or carries in THIS beat if it differs from their default outfit" },
               "characterState": { "Character Name": "physical state right now — sweating, bleeding, tear-stained, soaked, dust-covered, hair loose" },
               "continuityFromPrevious": "what must be unchanged from the previous beat (position, damage, held objects, light) — empty for the first beat of a scene",
-              "cameraAngle": "wide|medium_wide|medium_close|close_up|extreme_close_up|over_shoulder|low_angle|aerial",
-              "cameraMovement": "static|pan_left|pan_right|tilt_up|tilt_down|tracking|zoom_in|zoom_out|handheld",
+              "cameraAngle": "drone_aerial|aerial_wide|wide_establishing|two_shot|medium_wide|medium_close|close_up|tight_close_up|extreme_close_up|over_shoulder|low_angle|high_crane|dutch_angle|pov",
+              "cameraMovement": "static_tripod|slow_push_in|slow_pull_back|pan_left|pan_right|tilt_up|tilt_down|tracking_steadicam|drone_sweep|handheld_organic",
               "duration": ${SEGMENT_DURATION_SEC}
             }
           ]
@@ -202,6 +202,11 @@ Produce a JSON object with this EXACT structure:
 Rules:
 - Every scene MUST have at least 1 beat, and each beat is ${SEGMENT_DURATION_SEC} seconds
 - A scene with dialogue should have beats for each line of dialogue
+- DYNAMIC CAMERA DIRECTING (MOVIE STUDIO QUALITY):
+  - Start new exterior locations or major scene transitions with a "drone_aerial", "aerial_wide", or "wide_establishing" shot with "drone_sweep" or "slow_push_in" to establish epic movie scale.
+  - In 2-character dialogue scenes, alternate camera angles between "two_shot", "over_shoulder", "medium_close", and "close_up" or "tight_close_up" on dramatic reveals to create real cinematic editing rhythm.
+  - Use "extreme_close_up" for high emotional stakes (e.g. eyes glistening, tears, clenched fists, wedding ring, walking stick).
+  - Use "dutch_angle" or "low_angle" during confrontations, insults, betrayals, and shocking revelations.
 - In dialogue/two-character scenes, explicitly define "gaze" so characters look directly at each other during conversation. Characters speaking to each other MUST maintain direct, focused eye contact and eyeline, and must NOT look away, look outside, or stare into empty space unless explicitly required by the script.
 - Action sequences need multiple beats for different moments
 - Maximum ${MAX_SEGMENTS_PER_SCENE} beats per scene
@@ -479,18 +484,16 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     gazeBlock = `Eyeline & Gaze: Direct eye contact and focused gaze between speakers. Characters face and look directly at each other without looking away.`;
   }
 
-  // Camera description
-  const cameraDesc = [
-    beat.cameraAngle?.replace(/_/g, ' '),
-    beat.cameraMovement?.replace(/_/g, ' '),
-  ].filter(Boolean).join(', ');
+  // Camera and Cinematography framing
+  const cameraDesc = compileCameraDescriptor(beat.cameraAngle, beat.cameraMovement);
 
   // Image prompt — drives the anchor/keyframe (Qwen-Image, or Qwen-Image-Edit
   // when a previous frame is available to edit forward).
   // NEVER include: "8K", "ultra detailed", "concept art", "illustration", "render"
   // — these push the diffusion model into over-processed or cartoon space.
   const imagePrompt = [
-    'RAW photo, shot on 35mm film, Kodak Portra, cinematic film still, natural skin tones, film grain',
+    'RAW photo, shot on 35mm film, Kodak Portra 400, cinematic film still, authentic natural skin tones, film grain',
+    cameraDesc.imageFraming,
     `Scene: ${scene.location || 'unspecified location'}`,
     envBlock,
     charBlock,
@@ -501,30 +504,95 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     accessoryBlock,
     propBlock,
     continuityBlock,
-    `Camera: ${cameraDesc}`,
     `Mood: ${beat.mood || scene.emotion || 'neutral'}, intensity ${scene.intensity || 5}/10`,
-    `Lighting: natural ${scene.timeOfDay || 'day'} lighting, practical light sources`,
+    `Lighting: natural ${scene.timeOfDay || 'day'} cinematic 3-point lighting, practical film set lights`,
     'CRITICAL: Match the exact character faces, skin tones, and clothing from reference images',
-    'Realistic human skin texture, natural complexion, unretouched, no airbrushing',
+    'Realistic human skin texture, natural pores and complexion, unretouched, no airbrushing, no plastic sheen',
   ].filter(Boolean).join('. ');
 
   // Video prompt — LTX-2.5.
   const videoPrompt = [
-    `${animationStyle} film, cinematic motion, ${SEGMENT_DURATION_SEC} second clip, natural realistic`,
+    `${animationStyle} feature film, cinematic 24fps motion, ${SEGMENT_DURATION_SEC} second clip, photorealistic studio production`,
+    cameraDesc.videoMotion,
     `Action: ${beat.action}`,
     gazeBlock,
     beat.dialogue ? `[SPOKEN DIALOGUE by ${beat.speaker || 'character'}]: "${beat.dialogue}"` : '',
     beat.expression ? `Facial expression: ${beat.expression}` : '',
     stateBlock,
     propBlock,
-    `Camera: ${cameraDesc}`,
     `Mood: ${beat.mood || scene.emotion || 'neutral'}`,
     charBlock,
     envBlock,
-    'Smooth natural motion, consistent character appearance, realistic human movement, practical lighting, focused eyelines',
+    'Smooth fluid motion, consistent character appearance, realistic human movement, practical lighting, focused conversational eyelines',
   ].filter(Boolean).join('. ');
 
   return { imagePrompt, videoPrompt };
+}
+
+/**
+ * Compile professional cinematic camera angles & movements into precise diffusion instructions.
+ */
+function compileCameraDescriptor(angleRaw = '', movementRaw = '') {
+  const angle = String(angleRaw || '').toLowerCase().trim();
+  const movement = String(movementRaw || '').toLowerCase().trim();
+
+  let imageFraming = 'Cinematic framing, eye-level shot, 50mm prime lens';
+  let videoMotion = 'Natural camera stability, cinematic film motion';
+
+  // Angle mappings
+  if (angle.includes('drone') || angle.includes('aerial')) {
+    imageFraming = 'High-altitude cinematic drone aerial shot, expansive sweeping bird\'s eye view, grand cinematic vista, 24mm wide angle perspective';
+    videoMotion = 'Smooth sweeping drone flight glide across the scene, cinematic aerial motion';
+  } else if (angle.includes('over_shoulder') || angle.includes('over_the_shoulder')) {
+    imageFraming = 'Over-the-shoulder conversational shot, 50mm lens, soft out-of-focus foreground shoulder with sharp focus on conversational partner';
+    videoMotion = 'Over-the-shoulder framing, gentle natural breathing motion, sharp focus on speaking character';
+  } else if (angle.includes('two_shot')) {
+    imageFraming = 'Balanced cinematic two-shot profile, 35mm lens, theatrical film staging showing spatial relationship between both characters';
+    videoMotion = 'Cinematic two-shot framing, capturing natural conversational interaction and body language';
+  } else if (angle.includes('tight_close_up')) {
+    imageFraming = 'Intimate tight close-up portrait, 85mm prime lens, shallow depth of field f/1.8, soft bokeh background, intense focus on eyes and micro-expressions';
+    videoMotion = 'Tight close-up, subtle facial micro-movements, realistic breathing and eye blinking';
+  } else if (angle.includes('extreme_close_up') || angle.includes('macro')) {
+    imageFraming = 'Extreme macro close-up, 100mm lens, dramatic shallow focus on eyes, tears, or critical hand details';
+    videoMotion = 'Extreme close-up macro framing, subtle intense emotional movement';
+  } else if (angle.includes('close_up')) {
+    imageFraming = 'Cinematic close-up portrait, 85mm lens, shallow depth of field, natural soft background blur';
+    videoMotion = 'Close-up framing, expressive facial acting, realistic breathing';
+  } else if (angle.includes('medium_close')) {
+    imageFraming = 'Medium close-up shot, waist-up framing, 50mm lens, balanced cinematic headroom';
+    videoMotion = 'Medium close-up camera, natural performance capture';
+  } else if (angle.includes('low_angle')) {
+    imageFraming = 'Low-angle camera looking upward at character, commanding heroic perspective, 35mm lens';
+    videoMotion = 'Low-angle framing, steady upward cinematic gaze';
+  } else if (angle.includes('high_crane') || angle.includes('high_angle')) {
+    imageFraming = 'Elevated crane high-angle shot looking downward, emotional vulnerability and spatial scope';
+    videoMotion = 'Smooth high crane descent or gentle boom motion';
+  } else if (angle.includes('dutch')) {
+    imageFraming = 'Tilted Dutch angle shot, dynamic diagonal composition, dramatic psychological suspense and tension';
+    videoMotion = 'Dutch angle framing, dramatic atmospheric tension';
+  } else if (angle.includes('wide')) {
+    imageFraming = 'Wide establishing cinematic master shot, 24mm anamorphic lens, deep focus, grand environmental scale';
+    videoMotion = 'Wide cinematic master shot, full location visibility and character blocking';
+  }
+
+  // Movement mappings
+  if (movement.includes('push_in')) {
+    videoMotion += ', slow deliberate cinematic push-in tightening on emotional focus';
+  } else if (movement.includes('pull_back')) {
+    videoMotion += ', slow dramatic pull-back revealing surrounding setting';
+  } else if (movement.includes('drone_sweep') || movement.includes('sweep')) {
+    videoMotion += ', sweeping cinematic glide across the landscape';
+  } else if (movement.includes('tracking') || movement.includes('steadicam')) {
+    videoMotion += ', fluid smooth Steadicam tracking movement following the character';
+  } else if (movement.includes('pan_left') || movement.includes('pan_right')) {
+    videoMotion += `, smooth horizontal ${movement.replace(/_/g, ' ')}`;
+  } else if (movement.includes('tilt_up') || movement.includes('tilt_down')) {
+    videoMotion += `, smooth vertical ${movement.replace(/_/g, ' ')}`;
+  } else if (movement.includes('handheld')) {
+    videoMotion += ', subtle organic handheld camera breathing motion';
+  }
+
+  return { imageFraming, videoMotion };
 }
 
 /** Render a { name: value } continuity map as one prompt line, or '' when empty. */

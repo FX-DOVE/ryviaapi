@@ -341,17 +341,19 @@ export async function generateSceneSegments({
       if (videoAlreadyExists) {
         console.log(`[SegmentGenerator] ⏩ Reusing already-generated video segment ${segmentId}`);
       } else {
-        // ── Use pre-generated keyframe or direct continuation ────────────────
+        // ── Use pre-generated keyframe, direct continuation, or new camera angle cut ────────────────
         if (i === 0 && fs.existsSync(keyframePath)) {
           // First beat: already pre-generated in Phase 1!
           console.log(`[SegmentGenerator] Using pre-generated keyframe for ${segmentId}`);
           await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-        } else if (lastFramePath && (beat.strategy === GENERATION_STRATEGY.CONTINUATION || i > 0)) {
-          // Continuation beats: direct from video's last frame — ZERO image call!
-          console.log(`[SegmentGenerator] Direct continuous video from ${path.basename(lastFramePath)}`);
+        } else if (lastFramePath && beat.strategy === GENERATION_STRATEGY.CONTINUATION) {
+          // Continuous single-shot motion: direct from video's last frame — ZERO image call!
+          console.log(`[SegmentGenerator] 📹 Direct continuous video from ${path.basename(lastFramePath)}`);
           await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
         } else {
-          // Angle change / Frame bridge fallback
+          // Dynamic camera cut (angle change, drone view, over-the-shoulder, reaction shot, wide establishing)
+          // Generates a new keyframe from the target angle with Qwen-Image-Edit, conditioned on references!
+          console.log(`[SegmentGenerator] 🎬 Camera cut / Angle change (${beat.cameraAngle || beat.strategy}): generating new keyframe for ${segmentId}...`);
           await makeKeyframe({
             imagePrompt,
             keyframePath,

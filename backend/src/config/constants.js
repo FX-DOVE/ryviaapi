@@ -142,8 +142,10 @@ export const VALID_STYLE_PRESETS = [
 ];
 
 export const VALID_CAMERA_STYLES = [
-  'hollywood','documentary','drone','handheld',
-  'steadicam','closeup','wide','slow_zoom','tracking','pov'
+  'hollywood', 'documentary', 'drone', 'drone_aerial', 'aerial_wide', 'handheld',
+  'steadicam', 'closeup', 'close_up', 'tight_close_up', 'extreme_close_up',
+  'wide', 'wide_establishing', 'two_shot', 'over_shoulder', 'low_angle',
+  'high_crane', 'dutch_angle', 'slow_zoom', 'slow_push_in', 'tracking', 'pov'
 ];
 
 export const MOTION_LEVEL_PROMPT_MAP = {

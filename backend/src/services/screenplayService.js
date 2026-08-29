@@ -187,7 +187,7 @@ Each scene object must have EXACTLY these fields:
   "dialogue": [{"speaker": "CharacterName", "line": "What they say"}],
   "emotion": "tense|happy|sad|angry|fearful|neutral|romantic|epic|mysterious",
   "intensity": <1-10 integer>,
-  "cameraType": "extreme_close_up|close_up|medium_close|medium_wide|wide|aerial|low_angle|over_shoulder",
+  "cameraType": "drone_aerial|aerial_wide|wide_establishing|two_shot|medium_wide|medium_close|close_up|tight_close_up|extreme_close_up|over_shoulder|low_angle|high_crane|dutch_angle",
   "transitionOut": "cut|fade|dissolve|wipe",
   "duration": 10
 }
@@ -205,14 +205,14 @@ STORY QUALITY RULES (CRITICAL — violating these produces unwatchable films):
 8. NO REPETITION: Never have two scenes that make the same point. Each scene must add NEW information.
 9. SPECIFIC REFERENCES: Dialogue should reference specific events, names, places from the story — not vague generalities.
 
-Additional cinematography rules:
-- Vary action types throughout the act (don't just use 'establishing' for every scene)
-- Use 'talking' only when dialogue[] is not empty
-- In talking/dialogue scenes, actionDescription MUST explicitly describe character interaction and direct eye contact
-- Emotional scenes use close_up or extreme_close_up
-- Action scenes use medium_wide or low_angle
-- Every 8-12 scenes, include an establishing shot to orient the viewer
-- Make the narration CINEMATIC — not just describing what's happening, but evoking feeling
+CINEMATOGRAPHY & MOVIE STUDIO CAMERA RULES:
+- Use "drone_aerial" or "aerial_wide" for opening shots of acts, new outdoor estates, mansions, gates, and major location changes to give high-production movie studio scale.
+- In talking/dialogue scenes:
+  - actionDescription MUST explicitly describe character interaction and direct eye contact.
+  - Alternate camera angles dynamically: use "two_shot" for character staging, "over_shoulder" for conversational depth, "medium_close" for arguments, and "tight_close_up" or "extreme_close_up" on key emotional shocks and reveals.
+- Use "dutch_angle" or "low_angle" for dramatic confrontations, insults, arrests, and betrayal scenes.
+- Every 6-10 scenes, include a wide or drone establishing shot to re-orient the viewer in the world.
+- Make the narration CINEMATIC — not just describing what's happening, but evoking deep feeling.
 
 Output ONLY the raw JSON array. No markdown, no explanation.`;
 
