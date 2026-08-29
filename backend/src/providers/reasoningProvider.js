@@ -49,6 +49,13 @@ export function listTransports() {
     transports.push(openAiTransport('ai-api', explicitBase, explicitKey, process.env.AI_MODEL || geminiModel));
   }
 
+  // Groq (Ultra-fast reasoning fallback)
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    const groqModel = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+    transports.push(openAiTransport('groq', 'https://api.groq.com/openai/v1', groqKey, groqModel));
+  }
+
   return transports;
 }
 
