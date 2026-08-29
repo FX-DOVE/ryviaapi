@@ -17,9 +17,25 @@ export async function startJobPipeline(jobId, steps = null) {
 
   let plan = steps;
   if (!plan || !Array.isArray(plan) || plan.length === 0) {
-    if (job.directorPlan?.acts?.length && Object.keys(job.characterLocks || {}).length > 0) {
-      // Directing and consistency locks already completed! Start directly at segment_generation
+    const { default: Scene } = await import('../models/Scene.js');
+    const scenes = await Scene.find({ jobId });
+
+    const allScenesDone = scenes.length > 0 && scenes.every(s => s.status === 'done' && Boolean(s.videoPath));
+    const hasDirectorPlan = Boolean(job.directorPlan?.acts?.length);
+    const hasLocks = Object.keys(job.characterLocks || {}).length > 0 || Object.keys(job.environmentLocks || {}).length > 0;
+
+    if (job.finalVideoUrl || (job.finalVideoPath && typeof job.finalVideoPath === 'string')) {
+      // Final video already rendered! Resume directly at upload/notification
+      plan = ['upload', 'notify'];
+    } else if (allScenesDone) {
+      // All scenes generated and ready! Resume directly at rendering/assembly
+      plan = ['rendering', 'upload', 'notify'];
+    } else if (hasDirectorPlan && hasLocks) {
+      // Plan and locks already completed! Resume at segment generation
       plan = ['segment_generation', 'rendering', 'upload', 'notify'];
+    } else if (hasDirectorPlan) {
+      // Director plan exists, resume at locking
+      plan = ['locking', 'segment_generation', 'rendering', 'upload', 'notify'];
     } else if (job.screenplayId) {
       plan = [...SCREENPLAY_PIPELINE_STEPS];
     } else {
@@ -35,7 +51,7 @@ export async function startJobPipeline(jobId, steps = null) {
     'workflow.activeStep': firstId,
   });
 
-  console.log(`[ExecutionEngine] Job ${jobId} pipeline: ${plan.map(s => s.id || s).join(' → ')}`);
+  console.log(`[ExecutionEngine] 🚀 Job ${jobId} resuming from step "${firstId}": ${plan.map(s => s.id || s).join(' → ')}`);
 
   await triggerNextStep(jobId, null);
 }

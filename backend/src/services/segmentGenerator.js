@@ -335,31 +335,40 @@ export async function generateSceneSegments({
     };
 
     try {
-      // ── Use pre-generated keyframe or direct continuation ────────────────
-      if (i === 0 && fs.existsSync(keyframePath)) {
-        // First beat: already pre-generated in Phase 1!
-        console.log(`[SegmentGenerator] Using pre-generated keyframe for ${segmentId}`);
-        await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-      } else if (lastFramePath && (beat.strategy === GENERATION_STRATEGY.CONTINUATION || i > 0)) {
-        // Continuation beats: direct from video's last frame — ZERO image call!
-        console.log(`[SegmentGenerator] Direct continuous video from ${path.basename(lastFramePath)}`);
-        await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
+      // ── Check if segment video was already generated (e.g. resuming after failure) ──
+      const videoAlreadyExists = fs.existsSync(videoPath) && fs.statSync(videoPath).size > 1000;
+
+      if (videoAlreadyExists) {
+        console.log(`[SegmentGenerator] ⏩ Reusing already-generated video segment ${segmentId}`);
       } else {
-        // Angle change / Frame bridge fallback
-        await makeKeyframe({
-          imagePrompt,
-          keyframePath,
-          plate: lastFramePath || envPlate,
-          characterRefs,
-          label: segmentId,
-        });
-        await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
+        // ── Use pre-generated keyframe or direct continuation ────────────────
+        if (i === 0 && fs.existsSync(keyframePath)) {
+          // First beat: already pre-generated in Phase 1!
+          console.log(`[SegmentGenerator] Using pre-generated keyframe for ${segmentId}`);
+          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
+        } else if (lastFramePath && (beat.strategy === GENERATION_STRATEGY.CONTINUATION || i > 0)) {
+          // Continuation beats: direct from video's last frame — ZERO image call!
+          console.log(`[SegmentGenerator] Direct continuous video from ${path.basename(lastFramePath)}`);
+          await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
+        } else {
+          // Angle change / Frame bridge fallback
+          await makeKeyframe({
+            imagePrompt,
+            keyframePath,
+            plate: lastFramePath || envPlate,
+            characterRefs,
+            label: segmentId,
+          });
+          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
+        }
       }
 
       // Hand this segment's final frame to the next one.
       const lastFrameOutput = path.join(imgDir, `${segmentId}_lastframe.jpg`);
       try {
-        await extractLastFrame(videoPath, lastFrameOutput);
+        if (!fs.existsSync(lastFrameOutput)) {
+          await extractLastFrame(videoPath, lastFrameOutput);
+        }
         lastFramePath = lastFrameOutput;
       } catch (err) {
         console.warn(`[SegmentGenerator] Could not extract last frame: ${err.message}`);

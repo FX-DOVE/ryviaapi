@@ -73,6 +73,17 @@ export async function processDirectingStep(jobId) {
   emitJobEvent(jobId, 'job_progress', { status: JOB_STATUS.DIRECTING, progress: 10 });
   await logInfo(jobId, '🎬 Cinematic Director analyzing script...');
 
+  // ── Resumption Check: If director plan and scenes already exist, skip LLM decomposition ──
+  if (job.directorPlan?.acts?.length > 0) {
+    const existingScenesCount = await Scene.countDocuments({ jobId });
+    if (existingScenesCount > 0) {
+      await logInfo(jobId, `⏩ Reusing existing director plan (${job.directorPlan.acts.length} acts, ${job.directorPlan.totalScenes} scenes)`);
+      emitJobEvent(jobId, 'job_progress', { status: JOB_STATUS.DIRECTING, progress: 20 });
+      await triggerNextStep(jobId, 'directing');
+      return;
+    }
+  }
+
   const rawScript = job.input.script || job.input.prompt || '';
   const animationStyle = job.animationStyle || 'cinematic';
 
@@ -251,6 +262,14 @@ export async function processLockStep(jobId) {
       console.log(`[WorkerSteps] 🔗 Attached DB FilmCharacter "${match.name}" to plan character "${char.name}" (refImage: ${Boolean(char.referenceImageUrl || char.referenceImageKey)})`);
     }
 
+    // Check if lock already exists and is valid
+    const existingCharLock = job.characterLocks?.[char.name];
+    if (existingCharLock?.referenceImagePath && fs.existsSync(existingCharLock.referenceImagePath)) {
+      console.log(`[WorkerSteps] ⏩ Reusing existing character lock for "${char.name}": ${existingCharLock.referenceImagePath}`);
+      characterLocks[char.name] = existingCharLock;
+      continue;
+    }
+
     await logInfo(jobId, `Locking character ${i + 1}/${characters.length}: ${char.name}${char.referenceImageUrl || char.referenceImageKey ? ' (📸 with uploaded reference)' : ''}`);
 
     try {
@@ -286,6 +305,15 @@ export async function processLockStep(jobId) {
   const environments = [...(directorPlan.environments || [])];
   for (let i = 0; i < environments.length; i++) {
     const env = environments[i];
+    const envKey = env.locationId || env.name;
+
+    // Check if lock already exists
+    const existingEnvLock = job.environmentLocks?.[envKey];
+    if (existingEnvLock?.referenceImagePath && fs.existsSync(existingEnvLock.referenceImagePath)) {
+      console.log(`[WorkerSteps] ⏩ Reusing existing environment lock for "${env.name}": ${existingEnvLock.referenceImagePath}`);
+      environmentLocks[envKey] = existingEnvLock;
+      continue;
+    }
 
     // Match DB environment
     const envMatch = dbEnvironments.find(e =>
@@ -304,7 +332,7 @@ export async function processLockStep(jobId) {
 
     try {
       const lock = await createEnvironmentLock(env, animationStyle, jobId);
-      environmentLocks[env.locationId || env.name] = {
+      environmentLocks[envKey] = {
         lockPrompt: lock.lockPrompt,
         referenceImagePath: lock.referenceImagePath,
       };
@@ -408,6 +436,23 @@ export async function processSegmentStep(jobId) {
 
   for (const sceneDoc of scenes) {
     const sceneNum = sceneDoc.sceneNumber;
+
+    // ── Resumption Check: If scene is already DONE and has valid videoPath, skip generation ──
+    if (sceneDoc.status === SCENE_STATUS.DONE && sceneDoc.videoPath) {
+      console.log(`[WorkerSteps] ⏩ Scene ${sceneNum} is already complete (${sceneDoc.videoPath}) — reusing existing video`);
+      completedScenes++;
+
+      // Update carryInFrame to this scene's last frame if it exists
+      const imgDir = sceneImgDir(jobId);
+      const beatsCount = sceneDoc.beats?.length || 1;
+      const lastSegmentId = `scene_${String(sceneNum).padStart(4, '0')}_seg_${String(beatsCount).padStart(2, '0')}`;
+      const lastFrameCandidate = path.join(imgDir, `${lastSegmentId}_lastframe.jpg`);
+      if (fs.existsSync(lastFrameCandidate)) {
+        carryInFrame = lastFrameCandidate;
+      }
+      continue;
+    }
+
     await logInfo(jobId, `Animating scene ${sceneNum}/${scenes.length}...`);
 
     // Find matching scene from director plan
