@@ -284,10 +284,31 @@ export default function Admin({ defaultTab = 'overview' }) {
 
   if (loading) {
     return (
-      <AppPage className="flex items-center justify-center min-h-[80vh]">
-        <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-          <Loader size={16} className="animate-spin" />
-          Loading dashboard…
+      <AppPage>
+        <PageHeader
+          title="Admin Control Center"
+          description="Global system metrics, worker instances, and AI provider status."
+        />
+        <div className="flex border-b border-[var(--glass-border)] mb-8 gap-6 animate-pulse">
+          <div className="h-8 w-24 bg-[var(--bg-overlay)] rounded-t-lg"></div>
+          <div className="h-8 w-24 bg-[var(--bg-overlay)] rounded-t-lg"></div>
+          <div className="h-8 w-24 bg-[var(--bg-overlay)] rounded-t-lg"></div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] p-6 h-32 animate-pulse">
+              <div className="h-4 w-1/3 bg-[var(--bg-overlay)] rounded mb-4"></div>
+              <div className="h-8 w-1/2 bg-[var(--bg-overlay)] rounded"></div>
+            </div>
+          ))}
+        </div>
+        <div className="bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] p-6 h-64 animate-pulse">
+          <div className="h-6 w-1/4 bg-[var(--bg-overlay)] rounded mb-6"></div>
+          <div className="space-y-4">
+            <div className="h-4 w-full bg-[var(--bg-overlay)] rounded"></div>
+            <div className="h-4 w-5/6 bg-[var(--bg-overlay)] rounded"></div>
+            <div className="h-4 w-4/6 bg-[var(--bg-overlay)] rounded"></div>
+          </div>
         </div>
       </AppPage>
     );
@@ -700,13 +721,13 @@ export default function Admin({ defaultTab = 'overview' }) {
                       {meta.desc}
                     </p>
 
-                    <div className="space-y-4 mt-auto">
-                      <div>
+                    <div className="flex flex-col mt-auto">
+                      <div className="border-b border-[var(--glass-border)] py-3">
                         <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Active Model</span>
                         <span className="text-sm text-[var(--text-primary)] font-mono">{provider.model || <span className="text-[var(--text-muted)] italic">Inherited</span>}</span>
                       </div>
 
-                      <div>
+                      <div className="border-b border-[var(--glass-border)] py-3">
                         <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Endpoint</span>
                         <span className="text-sm text-[var(--text-primary)] font-mono truncate block">
                           {shortEndpoint(provider.endpoint) || <span className="text-[var(--text-muted)] italic">Not configured</span>}
@@ -715,7 +736,7 @@ export default function Admin({ defaultTab = 'overview' }) {
 
                       {/* Qwen answers on two endpoints; continuity depends on the edit one. */}
                       {provider.editEndpoint && (
-                        <div>
+                        <div className="border-b border-[var(--glass-border)] py-3">
                           <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Edit Endpoint</span>
                           <span className="text-sm text-[var(--text-primary)] font-mono truncate block">
                             {shortEndpoint(provider.editEndpoint)}
@@ -725,7 +746,7 @@ export default function Admin({ defaultTab = 'overview' }) {
 
                       {/* The reasoning role falls back across transports, in this order. */}
                       {provider.fallbacks?.length > 0 && (
-                        <div>
+                        <div className="border-b border-[var(--glass-border)] py-3">
                           <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Fallback Chain</span>
                           <span className="text-xs text-[var(--text-secondary)] font-mono block leading-relaxed">
                             {provider.fallbacks.join(' → ')}
@@ -733,7 +754,7 @@ export default function Admin({ defaultTab = 'overview' }) {
                         </div>
                       )}
 
-                      <div>
+                      <div className="py-3">
                         <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">.env Keys</span>
                         <span className="text-xs text-[var(--text-muted)] font-mono block leading-relaxed break-all">
                           {meta.envKeys.join(', ')}

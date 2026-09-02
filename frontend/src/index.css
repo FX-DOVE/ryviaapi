@@ -98,6 +98,9 @@
   --space-9:   72px;  /* 72px */
   --space-10:  80px;  /* 80px — page padding / hero */
 
+  /* Mobile bottom tab bar height (excludes safe-area inset, added separately) */
+  --bottom-nav-height: 58px;
+
   /* Typography */
   --font-display: 'Bricolage Grotesque', 'Inter', system-ui, sans-serif;
   --font-body:    'Inter', system-ui, sans-serif;
@@ -131,6 +134,10 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Safe-area: top padding prevents content rendering under iOS status bar */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 body {
@@ -144,6 +151,8 @@ body {
   font-size: var(--text-base);
   line-height: 1.6;
   min-height: 100vh;
+  /* Bottom safe-area ensures footer/last-element never clips under home indicator */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 #root { min-height: 100vh; }
@@ -472,7 +481,7 @@ p, .body-text {
   font-weight: 700;
   letter-spacing: 0.03em;
   color: var(--text-muted);
-  text-align: center;
+  text-align: left;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -508,6 +517,26 @@ p, .body-text {
   filter: none !important;
   box-shadow: none !important;
   border-color: var(--border-default);
+}
+
+/* Coming Soon / locked state — visually distinct from normal disabled */
+.btn-coming-soon {
+  background: rgba(255, 255, 255, 0.025) !important;
+  color: var(--text-muted) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.1) !important;
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0.7 !important;
+  filter: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+  gap: 8px;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+.btn-coming-soon:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
 /* ─── CARDS ──────────────────────────────────────────────────── */
@@ -633,6 +662,8 @@ p, .body-text {
 .badge {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   gap: 6px;
   min-height: 24px;
   background: var(--bg-elevated);
@@ -721,6 +752,7 @@ p, .body-text {
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-md);
 }
 
 .spinner {
@@ -731,6 +763,81 @@ p, .body-text {
   border-radius: 50%;
   animation: spin 700ms linear infinite;
   flex-shrink: 0;
+}
+
+/* ─── SKELETON CARD COMPONENTS ───────────────────────────────── */
+/* Job card skeleton — mirrors the exact layout of .job-card */
+.job-card-skeleton {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(160deg, #1A1A26, #101018);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.job-card-skeleton-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.035) 25%,
+    rgba(255,255,255,0.07)  50%,
+    rgba(255,255,255,0.035) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.job-card-skeleton-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.job-card-skeleton-line {
+  height: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+/* Project card skeleton */
+.project-card-skeleton {
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-card-skeleton-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.03) 25%,
+    rgba(255,255,255,0.06) 50%,
+    rgba(255,255,255,0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.project-card-skeleton-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ─── EMPTY STATE ────────────────────────────────────────────── */
@@ -793,6 +900,28 @@ p, .body-text {
   box-shadow: 0 0 0 4px var(--brand-glow);
 }
 
+/* ─── FILM STUDIO MEDIA DROPZONE (COMPACT & SLEEK) ───────────── */
+.film-media-dropzone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1.5px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.film-media-dropzone:hover,
+.film-media-dropzone.active {
+  border-color: var(--brand-primary);
+  background: var(--brand-subtle);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
 /* ─── LAYOUT ─────────────────────────────────────────────────── */
 .app-layout {
   display: flex;
@@ -809,10 +938,11 @@ p, .body-text {
   background:
     linear-gradient(90deg, rgba(124, 58, 237, 0.04), transparent 28rem),
     radial-gradient(circle at 96% 12%, rgba(245, 158, 11, 0.06), transparent 18rem);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .page-container {
-  padding: 44px clamp(24px, 4vw, 64px) 64px;
+  padding: max(44px, calc(env(safe-area-inset-top) + 20px)) clamp(24px, 4vw, 64px) max(64px, calc(env(safe-area-inset-bottom) + 48px));
   max-width: 1600px;
   margin: 0 auto;
   width: 100%;
@@ -939,6 +1069,48 @@ p, .body-text {
   color: var(--accent-red) !important;
 }
 
+/* Bottom tab bar — primary mobile navigation (Film Studio / Projects / History).
+   Hidden by default; shown ≤768px in the consolidated responsive block below. */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  height: var(--bottom-nav-height);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--blur-panel);
+  backdrop-filter: var(--blur-panel);
+  border-top: 1px solid var(--border-default);
+  align-items: stretch;
+  justify-content: space-around;
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.bottom-nav-item svg { opacity: 0.75; transition: opacity var(--transition-fast); }
+
+.bottom-nav-item.active {
+  color: var(--brand-light);
+}
+.bottom-nav-item.active svg { opacity: 1; }
+
 /* Mobile sidebar backdrop overlay */
 .sidebar-overlay {
   display: none;
@@ -954,8 +1126,9 @@ p, .body-text {
 .sidebar-hamburger {
   display: none;
   position: fixed;
-  top: 12px;
-  left: 12px;
+  /* Safe-area: clear the iOS status bar/notch */
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
   z-index: 101;
   width: 44px;
   height: 44px;
@@ -1246,8 +1419,9 @@ input[type='file']::file-selector-button:hover {
 /* ─── TOAST ──────────────────────────────────────────────────── */
 .toast-container {
   position: fixed;
-  bottom: var(--space-6);
-  right: var(--space-6);
+  /* Safe-area: keep toasts above home indicator */
+  bottom: max(var(--space-6), calc(env(safe-area-inset-bottom) + 16px));
+  right: max(var(--space-6), env(safe-area-inset-right));
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -1368,6 +1542,18 @@ input[type='file']::file-selector-button:hover {
     grid-template-columns: 1fr;
   }
 }
+@media (max-width: 768px) {
+  /* Film concept grid gets horizontal padding since the body/panel is now full-width */
+  .film-concept-grid {
+    padding: 0 16px;
+    gap: var(--space-4);
+  }
+  /* step-panel-header also needs side padding */
+  .step-panel-header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
 
 .film-concept-left {
   display: flex;
@@ -1424,7 +1610,7 @@ input[type='file']::file-selector-button:hover {
 }
 @media (max-width: 640px) {
   .film-step-panel-inner {
-    padding: var(--space-4);
+    padding: 0; /* panel is transparent on mobile; page-container provides the 16px gutter */
   }
 }
 
@@ -1432,6 +1618,8 @@ input[type='file']::file-selector-button:hover {
 .status-indicator {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   gap: 6px;
   padding: 2px 8px;
   border-radius: var(--radius-md);
@@ -1908,12 +2096,14 @@ input[type='file']::file-selector-button:hover {
   transition: width 400ms ease;
 }
 
+/* STATUS BADGE FIX: remove position:absolute — the parent bottom-row div
+   (position:absolute; bottom:10px) already handles placement.
+   Having both causes the double-stacked badge visual bug. */
 .job-card-status-badge {
-  position: absolute;
-  top: var(--space-1);
-  left: var(--space-1);
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   gap: 5px;
   padding: 4px 10px;
   border-radius: var(--radius-full);
@@ -1945,7 +2135,7 @@ input[type='file']::file-selector-button:hover {
 .job-card-delete:hover { background: rgba(239, 68, 68, 0.2); }
 
 .job-card-body {
-  padding: var(--space-2);
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -1976,6 +2166,15 @@ input[type='file']::file-selector-button:hover {
   gap: 4px;
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* Play/Download actions on a completed job card — full 44px touch target on
+   mobile; a more compact 34px once there's a pointer/room to spare. */
+.job-card-action-btn { height: 44px; min-height: unset; }
+.job-card-action-btn--icon { width: 44px; }
+@media (min-width: 640px) {
+  .job-card-action-btn { height: 34px; }
+  .job-card-action-btn--icon { width: 34px; }
 }
 
 /* ─── BILLING PAGE ───────────────────────────────────────────── */
@@ -2054,6 +2253,10 @@ input[type='file']::file-selector-button:hover {
   position: absolute;
   top: 16px;
   left: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   border-radius: var(--radius-full);
   background: var(--gradient-brand);
   color: white;
@@ -2077,7 +2280,10 @@ input[type='file']::file-selector-button:hover {
   border-radius: var(--radius-md);
   background: rgba(124, 58, 237, 0.08);
   padding: 13px;
-  text-align: center;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 /* ─── COLLAPSIBLE CARD ───────────────────────────────── */
@@ -2223,6 +2429,7 @@ input[type='file']::file-selector-button:hover {
   color: white;
   line-height: 1.4;
   flex-shrink: 0;
+  text-align: left;
 }
 
 .collapsible-card-chevron {
@@ -2432,6 +2639,17 @@ input[type='file']::file-selector-button:hover {
   .history-grid {
     grid-template-columns: 1fr;
   }
+  /* Override the 1fr/auto grid — go full-column flex on mobile */
+  .history-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  /* Ensure the search wrapper spans the full width */
+  .history-controls > div:last-child {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2469,11 +2687,20 @@ input[type='file']::file-selector-button:hover {
   .sidebar-overlay.open  { display: block; }
   .sidebar-hamburger     { display: inline-flex; }
   .sidebar-close         { display: inline-flex; }
+  /* Off-canvas drawer also needs clearance so its own footer/logout
+     button isn't hidden behind the fixed bottom tab bar. */
+  .sidebar               { padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom)); }
 
-  /* Add top padding so content isn't behind the hamburger.
-     The hamburger button is 44px wide at left:12px, so content
-     needs at least 68px left clearance (12 + 44 + 12 breathing room). */
-  .page-container        { padding: 72px 20px 48px 72px; }
+  .bottom-nav            { display: flex; }
+  /* Content needs bottom clearance for the fixed tab bar, in addition to
+     the existing top clearance for the hamburger. */
+  .main-content          { padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom)); }
+
+  /* Add top padding so content isn't hidden behind the fixed hamburger button
+     (44px button at top:12px → 12 + 44 + 12 = 68px, round up to 72px).
+     Horizontal padding is symmetric — the hamburger is fixed-position and
+     floats over content, so we don't need to indent the content body for it. */
+  .page-container        { padding: max(72px, calc(env(safe-area-inset-top) + 68px)) max(16px, env(safe-area-inset-right)) max(48px, calc(env(safe-area-inset-bottom) + 32px)) max(16px, env(safe-area-inset-left)); }
   .page-title            { font-size: 28px; }
   .section-title         { font-size: 22px; }
 
@@ -2502,9 +2729,64 @@ input[type='file']::file-selector-button:hover {
   /* New Video */
   .new-video-select-grid { grid-template-columns: 1fr; }
 
-  /* Toast */
-  .toast-container       { left: 16px; right: 16px; bottom: 16px; }
+  /* History — filter pills + search stack vertically on mobile */
+  .history-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .history-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .history-search { width: 100%; }
+
+  /* Empty state — constrain to viewport on narrow screens */
+  .empty-state-card {
+    max-width: 100%;
+    padding: 32px 20px;
+    box-sizing: border-box;
+  }
+
+  /* Toast — safe-area-aware on mobile, clears the fixed bottom tab bar */
+  .toast-container       { left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 12px); }
   .toast                 { min-width: 0; width: 100%; }
+
+  /* Film Studio Mobile — full-width body, no side padding (panels manage their own gutter) */
+  .film-studio-body {
+    padding: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+  .film-studio-header { 
+    padding: 16px; 
+  }
+  .concept-grid, 
+  .character-grid,
+  .shots-grid,
+  .director-grid { 
+    grid-template-columns: 1fr; 
+    padding: 16px;
+    gap: 16px;
+  }
+  .film-step-panel {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    margin: 16px 0 0 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .step-panel-header { 
+    padding: 16px; 
+  }
+  .film-step-indicator { 
+    overflow-x: auto; 
+    -webkit-overflow-scrolling: touch; 
+    padding-bottom: 8px; 
+    max-width: 100vw;
+  }
 }
 
 /* ============================================================
@@ -2636,6 +2918,29 @@ input[type='file']::file-selector-button:hover {
 }
 
 .film-step.done + .film-step .film-step-line { background: var(--brand-primary); }
+
+/* Compact mobile step indicator — hidden on desktop, shown ≤900px in place
+   of the full .film-step-indicator row (see @media (max-width: 1024px)). */
+.film-step-indicator-mobile { display: none; }
+.film-step-indicator-mobile-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.film-step-indicator-mobile-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.film-step-indicator-mobile-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--brand-primary);
+  transition: width 0.3s ease;
+}
 
 /* ── Body & Panels ──────────────────────────────────────────── */
 .film-studio-body {
@@ -2809,7 +3114,8 @@ input[type='file']::file-selector-button:hover {
   border-radius: var(--radius-md);
   padding: 10px 8px;
   cursor: pointer;
-  text-align: center;
+  text-align: left;
+  align-items: flex-start;
   transition: all 0.2s;
   display: flex;
   flex-direction: column;
@@ -2967,6 +3273,8 @@ input[type='file']::file-selector-button:hover {
 .char-role-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -3168,10 +3476,19 @@ input[type='file']::file-selector-button:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 18px;
-  text-align: center;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
-.summary-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+.summary-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
 .summary-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
 .summary-value { font-size: 15px; font-weight: 700; color: var(--text-primary); }
 
@@ -3311,6 +3628,10 @@ input[type='file']::file-selector-button:hover {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .production-cost-note {
@@ -3330,22 +3651,50 @@ input[type='file']::file-selector-button:hover {
 
 /* ── Responsive ─────────────────────────────────────────────── */
 
-/* ── 900px: tablet / large phone landscape ─────────────────── */
-@media (max-width: 900px) {
+/* ── 1024px: tablet / large phone landscape (folded from the former
+   900px-only breakpoint to align with the app's consolidated 1024px tier) */
+@media (max-width: 1024px) {
   .concept-grid  { grid-template-columns: 1fr; }
   .style-grid    { grid-template-columns: 1fr 1fr; }
+  /* Swap the full step row for the compact "Step N of 4" label + progress
+     bar — the full row has no room and previously just vanished, leaving
+     mobile users with no sense of progress through the flow. */
   .film-step-indicator { display: none; }
+  .film-step-indicator-mobile { display: block; }
+  /* Tablet (768–1024px): modest padding. Phones (≤768px) override to 0 below. */
   .film-studio-body { padding: 16px; }
   .step-footer   { flex-direction: column; align-items: stretch; }
   .generation-summary { grid-template-columns: 1fr; }
 }
 
-/* ── 640px: small tablets / large phones ───────────────────── */
-@media (max-width: 640px) {
+/* ── 768px: mobile phones & tablets ───────────────────────── */
+@media (max-width: 768px) {
   /* Header: must clear the fixed hamburger button (left:12px + 44px wide + 12px gap = 68px)
      Use asymmetric padding: generous left, normal right */
   .film-studio-header {
     padding: 14px 16px 14px 68px;
+  }
+
+  /* Body: full-width edge-to-edge */
+  .film-studio-body {
+    padding: 0 0 32px 0;
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Parent card for Project Configuration and all studio steps:
+     Flat 0 border-radius matching the header, with 16px breathing space from the sticky header */
+  .film-step-panel {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    margin-top: 16px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .film-step-panel-inner {
+    padding: 0 0 24px 0;
   }
 
   /* The film-studio-brand icon sits left of the title — no overflow room.
@@ -3418,10 +3767,38 @@ input[type='file']::file-selector-button:hover {
     justify-content: center;
   }
 
-  /* Film style cards: shrink min to fill screen width */
+  /* Film style cards: full-width stacked on mobile — clean & professional */
   .film-style-grid {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     gap: 12px;
+  }
+
+  .film-style-grid .film-style-option {
+    width: 100%;
+    max-width: 100%;
+    flex: none;
+    align-items: stretch;
+  }
+
+  /* Center card body text */
+  .film-style-grid .film-style-option .vt-body {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .film-style-grid .film-style-option .vt-label,
+  .film-style-grid .film-style-option .vt-desc {
+    text-align: left;
+    width: 100%;
+  }
+
+  .film-style-grid .film-style-option .vt-media {
+    align-self: flex-start;
+    justify-content: flex-start;
+    margin-left: 0;
+    margin-right: 0;
   }
 
   /* Style grid (animation style picker) */
@@ -3484,9 +3861,14 @@ input[type='file']::file-selector-button:hover {
     font-size: 28px;
   }
 
-  /* Film style grid: single column on very narrow screens */
+  /* Film style grid: already full-width stacked from 768px rule — just ensure no max-width cap */
   .film-style-grid {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .film-style-grid .film-style-option {
+    width: 100%;
+    max-width: 100%;
   }
 
   /* Stat pills: wrap gracefully */
@@ -3633,6 +4015,10 @@ input[type='file']::file-selector-button:hover {
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #A09CB8;
   width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .film-style-option.selected .vt-media {

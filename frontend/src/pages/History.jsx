@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Film, Search, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Film, Search, ArrowLeft, ArrowRight, Clapperboard } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import useAppStore from '../store/useAppStore';
 import { getHistory, deleteJob } from '../api/jobs';
 import JobCard from '../components/JobCard';
@@ -7,18 +8,33 @@ import JobCard from '../components/JobCard';
 import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
 import { AppButton } from '../components/ui/AppButton';
-import { AppInput } from '../components/ui/AppInput';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 
 const STATUS_FILTERS = ['all', 'queued', 'media_generation', 'completed', 'failed'];
 
+// Skeleton card that mirrors the real JobCard layout
+function JobCardSkeleton() {
+  return (
+    <div className="job-card-skeleton">
+      <div className="job-card-skeleton-thumb" />
+      <div className="job-card-skeleton-body">
+        <div className="job-card-skeleton-line" style={{ width: '72%' }} />
+        <div className="job-card-skeleton-line" style={{ width: '45%', height: '10px', opacity: 0.6 }} />
+        <div className="job-card-skeleton-line" style={{ width: '88%', marginTop: '4px' }} />
+      </div>
+    </div>
+  );
+}
+
 export default function History() {
+  const navigate = useNavigate();
   const { jobs, jobsTotal, setJobs, removeJob, addToast } = useAppStore();
   const [filter,  setFilter]  = useState('all');
   const [search,  setSearch]  = useState('');
   const [page,    setPage]    = useState(1);
   const [loading, setLoading] = useState(false);
+  const [hasEverLoaded, setHasEverLoaded] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
 
   const fetchJobs = async (p = 1, status = filter) => {
@@ -32,7 +48,8 @@ export default function History() {
     } catch { 
       addToast('Failed to load history', 'error'); 
     } finally { 
-      setLoading(false); 
+      setLoading(false);
+      setHasEverLoaded(true);
     }
   };
 
@@ -60,6 +77,9 @@ export default function History() {
     ? jobs.filter((j) => j.title.toLowerCase().includes(search.toLowerCase()))
     : jobs;
 
+  // True first-run: no jobs at all, unfiltered
+  const isFirstRun = hasEverLoaded && jobsTotal === 0 && filter === 'all' && !search.trim();
+
   return (
     <AppPage className="history-page">
       <PageHeader 
@@ -83,7 +103,7 @@ export default function History() {
           ))}
         </div>
 
-        <div className="relative w-64">
+        <div className="relative w-full sm:w-64">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             className="form-input pl-10 w-full"
@@ -94,16 +114,29 @@ export default function History() {
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Grid / Loading / Empty */}
       {loading ? (
-        <div className="flex justify-center items-center py-20">
-          <div className="spinner w-8 h-8 border-[3px]" />
+        <div className="history-grid">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <JobCardSkeleton key={i} />
+          ))}
         </div>
+      ) : isFirstRun ? (
+        <EmptyState
+          icon={Clapperboard}
+          title="Lights, Camera, Action!"
+          description="You haven't produced any videos yet. Head to Film Studio to write a script and generate your first cinematic masterpiece."
+          primaryAction={
+            <AppButton icon={Clapperboard} onClick={() => navigate('/app/film-studio')}>
+              Open Film Studio
+            </AppButton>
+          }
+        />
       ) : filtered.length === 0 ? (
         <EmptyState 
           icon={Film}
           title="No videos found"
-          description="Try a different filter or create your first video."
+          description="Try a different filter or clear your search."
         />
       ) : (
         <div className="history-grid">

@@ -125,7 +125,7 @@ export default function EnvironmentLibrary({ environments, setEnvironments }) {
           <p className="text-[var(--text-muted)] text-xs mt-1">Add a location to reuse its aesthetic across multiple scenes.</p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-2 max-h-[50vh] sm:max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           {environments.map((e) => (
             <div key={e._id} className="p-3 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] flex items-center gap-3 relative group transition-all hover:bg-[var(--bg-overlay)] hover:border-[var(--border-default)]">
               {e.referenceImageUrls?.length > 0 ? (

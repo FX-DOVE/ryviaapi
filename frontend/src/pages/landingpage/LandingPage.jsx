@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
+import { XCircle, 
   Film,
   Sparkles,
   Clapperboard,
@@ -193,7 +193,7 @@ export default function LandingPage() {
           {/* Mobile menu toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-slate-300 hover:text-white bg-white/5 border border-white/10"
+            className="md:hidden min-w-11 min-h-11 flex items-center justify-center rounded-lg text-slate-300 hover:text-white bg-white/5 border border-white/10"
             aria-label="Toggle Navigation"
           >
             <div className="w-5 h-4 flex flex-col justify-between">
@@ -207,11 +207,11 @@ export default function LandingPage() {
         {/* Mobile Dropdown */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-[#0d0e15] border-b border-white/10 px-6 py-6 space-y-4 animate-in slide-in-from-top-4">
-            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="block text-slate-300 hover:text-white py-1">Features</a>
-            <a href="#workflow" onClick={() => setMobileMenuOpen(false)} className="block text-slate-300 hover:text-white py-1">Workflow</a>
-            <a href="#modes" onClick={() => setMobileMenuOpen(false)} className="block text-slate-300 hover:text-white py-1">Creative Modes</a>
-            <a href="#showcase" onClick={() => setMobileMenuOpen(false)} className="block text-slate-300 hover:text-white py-1">Showcase</a>
-            <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="block text-slate-300 hover:text-white py-1">FAQ</a>
+            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-h-11 text-slate-300 hover:text-white">Features</a>
+            <a href="#workflow" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-h-11 text-slate-300 hover:text-white">Workflow</a>
+            <a href="#modes" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-h-11 text-slate-300 hover:text-white">Creative Modes</a>
+            <a href="#showcase" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-h-11 text-slate-300 hover:text-white">Showcase</a>
+            <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-h-11 text-slate-300 hover:text-white">FAQ</a>
             <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
               <button
                 onClick={() => navigate('/login')}
@@ -850,7 +850,7 @@ export default function LandingPage() {
                 <button
                   key={cat}
                   onClick={() => setActiveShowcase(cat)}
-                  className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`min-h-11 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
                     activeShowcase === cat
                       ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                       : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
@@ -912,7 +912,7 @@ export default function LandingPage() {
               </div>
               <button
                 onClick={() => setModalVideo(null)}
-                className="text-slate-400 hover:text-white p-2 rounded-lg bg-white/5"
+                className="min-w-11 min-h-11 flex items-center justify-center text-slate-400 hover:text-white p-2 rounded-lg bg-white/5"
               >
                 ✕
               </button>

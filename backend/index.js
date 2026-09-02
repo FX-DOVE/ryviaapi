@@ -35,8 +35,9 @@ async function start() {
     // Register nightly maintenance cron (idempotent)
     await registerMaintenanceCron();
 
-    server.listen(PORT, () => {
-      console.log(`[API] Server listening on http://localhost:${PORT}`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`[API] Server listening on http://0.0.0.0:${PORT}`);
+      console.log(`[API] LAN access: http://192.168.1.125:${PORT}`);
       console.log(`[API] Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (err) {

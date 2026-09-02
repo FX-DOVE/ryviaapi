@@ -1,5 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Settings, 
+  Film, User, Clapperboard, Users, Folder, Lightbulb, Tag, Music, Ticket,
+  Edit2, Trash2, AlertTriangle, CheckCircle, ListChecks, Save,
+  Video, BookOpen, Camera, UploadCloud, X,
+} from 'lucide-react';
 import { filmCharactersApi, screenplaysApi } from '../api/filmStudio';
 import { getProject } from '../api/projects';
 import { useScreenplaySocket } from '../hooks/useSocket';
@@ -8,14 +13,14 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const VIDEO_TYPES = [
-  { id: 'documentary', label: 'Documentary', description: 'Factual narration with cinematic B-roll and captions.', mediaRequired: true, fixedRuntime: false, icon: '🎞️', image: '/modes/documentary.jpg' },
-  { id: 'drama', label: 'Drama', description: 'Emotional acting: characters cry, argue, love, betray.', mediaRequired: false, fixedRuntime: true, defaultTargetMinutes: 3, icon: '🎭', image: '/modes/drama.jpg' },
-  { id: 'movie', label: 'Movie / Film', description: 'Full cinematic production with acting and coverage.', mediaRequired: false, fixedRuntime: true, defaultTargetMinutes: 5, icon: '🎬', image: '/modes/movie.jpg' },
-  { id: 'explainer', label: 'Explainer', description: 'Clear teaching video, clean lighting.', mediaRequired: true, fixedRuntime: false, icon: '💡', image: '/modes/explainer.jpg' },
-  { id: 'commercial', label: 'Commercial / Ad', description: 'Short punchy product-hero visuals.', mediaRequired: true, fixedRuntime: false, icon: '🏷️', image: '/modes/commercial.jpg' },
-  { id: 'music_video', label: 'Music Video', description: 'Beat-synced stylised visuals.', mediaRequired: true, fixedRuntime: false, icon: '🎵', image: '/modes/music_video.jpg' },
-  { id: 'cinematic_trailer', label: 'Cinematic Trailer', description: 'High-tension montage, epic pacing.', mediaRequired: false, fixedRuntime: false, icon: '🍿', image: '/modes/cinematic_trailer.jpg' },
-  { id: 'anime', label: 'Anime / Cartoon', description: 'Style-locked animated performance.', mediaRequired: false, fixedRuntime: true, defaultTargetMinutes: 3, icon: '⛩️', image: '/modes/anime.jpg' },
+  { id: 'documentary', label: 'Documentary', description: 'Factual narration with cinematic B-roll and captions.', mediaRequired: true,  fixedRuntime: false, Icon: Film,        image: '/modes/documentary.jpg' },
+  { id: 'drama',       label: 'Drama',       description: 'Emotional acting: characters cry, argue, love, betray.',  mediaRequired: false, fixedRuntime: true,  defaultTargetMinutes: 3, Icon: Users,        image: '/modes/drama.jpg' },
+  { id: 'movie',       label: 'Movie / Film',description: 'Full cinematic production with acting and coverage.',      mediaRequired: false, fixedRuntime: true,  defaultTargetMinutes: 5, Icon: Clapperboard, image: '/modes/movie.jpg' },
+  { id: 'explainer',   label: 'Explainer',   description: 'Clear teaching video, clean lighting.',                   mediaRequired: true,  fixedRuntime: false, Icon: Lightbulb,    image: '/modes/explainer.jpg' },
+  { id: 'commercial',  label: 'Commercial / Ad', description: 'Short punchy product-hero visuals.',                  mediaRequired: true,  fixedRuntime: false, Icon: Tag,          image: '/modes/commercial.jpg' },
+  { id: 'music_video', label: 'Music Video', description: 'Beat-synced stylised visuals.',                           mediaRequired: true,  fixedRuntime: false, Icon: Music,        image: '/modes/music_video.jpg' },
+  { id: 'cinematic_trailer', label: 'Cinematic Trailer', description: 'High-tension montage, epic pacing.',          mediaRequired: false, fixedRuntime: false, Icon: Ticket,       image: '/modes/cinematic_trailer.jpg' },
+  { id: 'anime',       label: 'Anime / Cartoon', description: 'Style-locked animated performance.',                  mediaRequired: false, fixedRuntime: true,  defaultTargetMinutes: 3, Icon: Clapperboard, image: '/modes/anime.jpg' },
 ];
 
 const ASPECT_RATIOS = [
@@ -31,16 +36,29 @@ const CHARACTER_ROLES = ['protagonist', 'antagonist', 'supporting', 'minor'];
 
 function StepIndicator({ step, current }) {
   const STEPS = ['Film Concept', 'Characters', 'Generate', 'Review'];
+  const progressPct = ((current - 1) / (STEPS.length - 1)) * 100;
   return (
-    <div className="film-step-indicator">
-      {STEPS.map((label, i) => (
-        <div key={i} className={`film-step ${i + 1 === current ? 'active' : ''} ${i + 1 < current ? 'done' : ''}`}>
-          <div className="film-step-num">{i + 1 < current ? '✓' : i + 1}</div>
-          <span>{label}</span>
-          {i < STEPS.length - 1 && <div className="film-step-line" />}
+    <>
+      <div className="film-step-indicator">
+        {STEPS.map((label, i) => (
+          <div key={i} className={`film-step ${i + 1 === current ? 'active' : ''} ${i + 1 < current ? 'done' : ''}`}>
+            <div className="film-step-num">{i + 1 < current ? '✓' : i + 1}</div>
+            <span>{label}</span>
+            {i < STEPS.length - 1 && <div className="film-step-line" />}
+          </div>
+        ))}
+      </div>
+      {/* Compact mobile-only replacement — text label + thin progress bar,
+          shown ≤900px where the full step row is hidden for space. */}
+      <div className="film-step-indicator-mobile">
+        <span className="film-step-indicator-mobile-label">
+          Step {current} of {STEPS.length} — {STEPS[current - 1]}
+        </span>
+        <div className="film-step-indicator-mobile-track">
+          <div className="film-step-indicator-mobile-fill" style={{ width: `${progressPct}%` }} />
         </div>
-      ))}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -65,7 +83,7 @@ function CharacterCard({ char, onEdit, onDelete, onPreview, index }) {
             onPreview({
               title: `${char.name} (${char.role || 'Character'})`,
               badge: char.role?.toUpperCase(),
-              icon: '🧑‍🎭',
+              icon: <User size={16} />,
               src: proxyUrl,
               label: 'Physical Description & Consistency Prompt',
               subtitle: char.physicalDescription || 'Master reference photo used for character consistency locks.',
@@ -86,8 +104,8 @@ function CharacterCard({ char, onEdit, onDelete, onPreview, index }) {
         )}
       </div>
       <div className="char-actions">
-        <button className="btn-icon" onClick={() => onEdit(char)} title="Edit">✏️</button>
-        <button className="btn-icon btn-icon-danger" onClick={() => onDelete(char)} title="Delete">🗑️</button>
+        <button className="btn-icon" onClick={() => onEdit(char)} title="Edit"><Edit2 size={14} /></button>
+        <button className="btn-icon btn-icon-danger" onClick={() => onDelete(char)} title="Delete"><Trash2 size={14} /></button>
       </div>
     </div>
   );
@@ -130,7 +148,7 @@ function CharacterEditor({ character, onSave, onCancel }) {
                 {previewImage ? (
                   <img src={previewImage} className="w-full h-full object-cover" alt="Preview" />
                 ) : (
-                  <span className="text-2xl opacity-50">📸</span>
+                  <Camera className="opacity-50 text-2xl" size={24} />
                 )}
               </div>
               <input type="file" id="char-img-upload" hidden accept="image/*" onChange={handleImageUpload} />
@@ -248,7 +266,7 @@ function EditableField({ label, value, multiline = false, onSave }) {
         <div className="flex gap-2 mt-2">
           <button onClick={handleSave} disabled={saving}
             className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-colors disabled:opacity-50">
-            {saving ? 'Saving…' : '✓ Save'}
+            {saving ? 'Saving…' : <><CheckCircle size={14} className="inline mr-1"/> Save</>}
           </button>
           <button onClick={() => { setEditing(false); setDraft(value || ''); }}
             className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[var(--text-secondary)] text-xs font-bold transition-colors">
@@ -269,7 +287,7 @@ function EditableField({ label, value, multiline = false, onSave }) {
         onClick={() => { setDraft(value || ''); setEditing(true); }}
         className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10 text-[var(--text-muted)] hover:text-purple-300"
         title="Edit"
-      >✏️</button>
+      ><Edit2 size={13} /></button>
     </div>
   );
 }
@@ -317,19 +335,19 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <h2 className="flex items-center gap-2">✅ Screenplay Ready</h2>
-            <p>Review, edit, then start production. Click any ✏️ to edit inline.</p>
+            <p>Review, edit, then start production. Click the edit icon to edit inline.</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <div className="stat-pill">📝 {totalScenes} Scenes</div>
-            <div className="stat-pill">🎭 {sp.acts?.length} Acts</div>
-            <div className="stat-pill">🧑 {sp.characters?.length || 0} Characters</div>
-            {saving && <div className="stat-pill animate-pulse">💾 Saving…</div>}
+            <div className="stat-pill"><ListChecks size={12} style={{ display: "inline", marginRight: 4 }} />{totalScenes} Scenes</div>
+            <div className="stat-pill"><Film size={14} className="inline mr-1"/> {sp.acts?.length} Acts</div>
+            <div className="stat-pill"><Users size={12} style={{ display: "inline", marginRight: 4 }} />{sp.characters?.length || 0} Characters</div>
+            {saving && <div className="stat-pill animate-pulse"><Save size={12} style={{ display: "inline", marginRight: 4 }} />Saving…</div>}
           </div>
         </div>
       </div>
 
       {/* ── Story Bible ── */}
-      <CollapseCard title="Story Bible & Logline" icon="📖" defaultOpen={true} accent="purple">
+      <CollapseCard title="Story Bible & Logline" icon={<BookOpen size={16} />} defaultOpen={true} accent="purple">
         <EditableField
           label="Film Title"
           value={sp.title}
@@ -361,7 +379,7 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
 
       {/* ── Characters ── */}
       {sp.characters?.length > 0 && (
-        <CollapseCard title="Characters" icon="🧑‍🎭" badge={sp.characters.length} accent="teal">
+        <CollapseCard title="Characters" icon={<User size={16}/>} badge={sp.characters.length} accent="teal">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             {sp.characters.map((char, i) => (
               <div key={i} className="rounded-lg bg-white/5 border border-white/10 p-3">
@@ -382,7 +400,7 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
       )}
 
       {/* ── Acts & Scenes ── */}
-      <CollapseCard title="Act Structure & Scenes" icon="🎬" badge={`${sp.acts?.length || 0} acts · ${totalScenes} scenes`} defaultOpen={true} accent="amber">
+      <CollapseCard title="Act Structure & Scenes" icon={<Clapperboard size={16}/>} badge={`${sp.acts?.length || 0} acts · ${totalScenes} scenes`} defaultOpen={true} accent="amber">
         {sp.acts?.map((act, ai) => (
           <div key={ai} className="mb-4">
             <div className="flex items-center gap-3 mb-2">
@@ -401,11 +419,11 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
               <CollapseCard
                 key={si}
                 title={`Scene ${scene.sceneNumber || si + 1}: ${scene.location || 'Unknown location'}`}
-                icon="🎥"
+                icon={<Camera size={16} />}
                 badge={`${scene.beats?.length || 0} beats`}
                 accent="blue"
               >
-                <div className="grid grid-cols-2 gap-3 mb-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 text-xs">
                   <div><span className="text-[var(--text-muted)]">Time: </span><span className="text-[var(--text-secondary)]">{scene.timeOfDay || '—'}</span></div>
                   <div><span className="text-[var(--text-muted)]">Tone: </span><span className="text-[var(--text-secondary)]">{scene.emotion || '—'}</span></div>
                   <div><span className="text-[var(--text-muted)]">Characters: </span><span className="text-[var(--text-secondary)]">{scene.characters?.join(', ') || scene.characterNames?.join(', ') || '—'}</span></div>
@@ -448,7 +466,7 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
 
       {/* ── Full Script Text ── */}
       {sp.rawScript && (
-        <CollapseCard title="Full Script Text" icon="📄" accent="rose">
+        <CollapseCard title="Full Script Text" icon={<Film size={16} />} accent="rose">
           <EditableField
             label="Raw Script"
             value={sp.rawScript}
@@ -458,7 +476,7 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
         </CollapseCard>
       )}
       {sp.synopsis && !sp.rawScript && (
-        <CollapseCard title="Synopsis / Script" icon="📄" accent="rose">
+        <CollapseCard title="Synopsis / Script" icon={<Film size={16} />} accent="rose">
           <EditableField
             label="Script / Synopsis"
             value={sp.synopsis}
@@ -470,7 +488,7 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
 
       {/* ── Production Cost ── */}
       <div className="production-cost-note mt-4">
-        <div className="cost-icon">💡</div>
+        <div className="cost-icon"><Lightbulb size={20} /></div>
         <div>
           <strong>Production Cost Estimate:</strong> This film will require ~{totalScenes} image generations and ~{totalScenes} video clip generations.
           Cost depends on your video provider (Kling: ~$0.15/clip · Runway: ~$0.25/clip).
@@ -480,7 +498,7 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
       <div className="step-footer">
         <button className="btn-secondary" onClick={onRegenerate}>← Regenerate</button>
         <button className="btn-produce btn-lg" onClick={onProduce} disabled={loading}>
-          {loading ? 'Starting Production…' : '🎬 Start Film Production'}
+          {loading ? 'Starting Production…' : <><Clapperboard size={16} className="inline mr-1"/> Start Film Production</>}
         </button>
       </div>
     </div>
@@ -511,7 +529,7 @@ function ImageLightboxModal({ preview, onClose }) {
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--bg-raised)]">
           <div className="flex items-center gap-2.5 min-w-0 pr-4">
-            <span className="text-lg">{preview.icon || '🖼️'}</span>
+            <span className="text-lg">{preview.icon || <Film size={16}/>}</span>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-[var(--text-primary)] truncate">{preview.title}</h3>
               {preview.badge && (
@@ -580,6 +598,7 @@ export default function FilmStudioPage() {
   const [editingChar, setEditingChar] = useState(null);
   const [characters, setCharacters] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
+  const [isDraggingMedia, setIsDraggingMedia] = useState(false);
 
   // Film concept form
   const [concept, setConcept] = useState({
@@ -937,7 +956,7 @@ export default function FilmStudioPage() {
       <div className="film-studio-header">
         <div className="film-studio-header-content flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="film-studio-brand flex items-center gap-3">
-            <div className="film-studio-icon">🎬</div>
+            <div className="film-studio-icon"><Clapperboard size={24}/></div>
             <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-xl font-bold text-[var(--text-primary)] m-0">Film Studio</h1>
@@ -952,14 +971,16 @@ export default function FilmStudioPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap w-full md:w-auto">
             <button
               onClick={() => navigate('/app/projects')}
               className="px-4 py-2 rounded-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5"
             >
-              <span>📁</span> Switch Studio
+              <Folder size={14} /> Switch Studio
             </button>
-            <StepIndicator step={step} current={step} />
+            <div className="flex-1 min-w-[140px]">
+              <StepIndicator step={step} current={step} />
+            </div>
           </div>
         </div>
       </div>
@@ -967,7 +988,7 @@ export default function FilmStudioPage() {
       <div className="film-studio-body">
         {error && (
           <div className="film-error-banner">
-            <span>⚠️ {error}</span>
+            <span><AlertTriangle size={14} style={{ display: "inline", marginRight: 4 }} />{error}</span>
             <button onClick={() => setError('')}>✕</button>
           </div>
         )}
@@ -976,7 +997,7 @@ export default function FilmStudioPage() {
         {step === 1 && (
           <div className="film-step-panel film-step-panel-inner">
             <div className="step-panel-header mb-8">
-              <h2>🎭 Project Configuration</h2>
+              <h2 className="flex items-center gap-2"><Settings size={20} className="text-[var(--text-muted)]"/> Project Configuration</h2>
               <p className="text-[var(--text-secondary)]">Define your project requirements, style, and scope.</p>
             </div>
 
@@ -1010,13 +1031,15 @@ export default function FilmStudioPage() {
                       >
                         <div className="vt-thumb">
                           <img src={type.image} alt={type.label} loading="lazy" decoding="async" />
-                          <span className="vt-badge">{type.icon}</span>
+                          <span className="vt-badge">{type.Icon && <type.Icon size={14} />}</span>
                         </div>
                         <div className="vt-body">
                           <div className="vt-label">{type.label}</div>
                           <div className="vt-desc">{type.description}</div>
                           <div className="vt-media">
-                            {type.mediaRequired !== false ? '🎙️ Audio Required' : '🎬 Script-Driven'}
+                            {type.mediaRequired !== false
+                              ? <><Music size={11} style={{ display: 'inline', marginRight: 3 }} />Audio Required</>
+                              : <><Film size={11} style={{ display: 'inline', marginRight: 3 }} />Script-Driven</>}
                           </div>
                         </div>
                       </button>
@@ -1070,17 +1093,81 @@ export default function FilmStudioPage() {
                 </div>
 
                 <div className="form-group">
-                  <div className="flex justify-between mb-2">
+                  <div className="flex justify-between items-center mb-2">
                     <label className="form-label m-0">
                       Media File {VIDEO_TYPES.find(t => t.id === concept.videoType)?.mediaRequired ? <span className="text-[var(--accent-red)]">*</span> : <span className="label-hint">(optional)</span>}
                     </label>
+                    {concept.mediaFile && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConcept(c => ({ ...c, mediaFile: null }));
+                        }}
+                        className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent-red)] flex items-center gap-1 transition-colors"
+                      >
+                        <X size={12} /> Clear
+                      </button>
+                    )}
                   </div>
-                  <div className="dropzone min-h-[120px] justify-center">
-                    <div className="text-2xl mb-2">📁</div>
-                    <div className="text-[0.9rem]">Drag & Drop Audio/Video</div>
-                    <div className="text-xs text-[var(--text-muted)]">Supported: MP3, WAV, MP4, MOV</div>
+
+                  <input
+                    type="file"
+                    id="concept-media-file-input"
+                    hidden
+                    accept="audio/*,video/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setConcept(c => ({ ...c, mediaFile: file }));
+                      }
+                    }}
+                  />
+
+                  <div
+                    onClick={() => document.getElementById('concept-media-file-input')?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingMedia(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingMedia(false); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDraggingMedia(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) setConcept(c => ({ ...c, mediaFile: file }));
+                    }}
+                    className={`film-media-dropzone ${isDraggingMedia ? 'active' : ''}`}
+                  >
+                    {concept.mediaFile ? (
+                      <div className="flex items-center gap-3 w-full">
+                        <div className="w-8 h-8 rounded-lg bg-[color-mix(in_srgb,var(--accent-green)_16%,transparent)] text-[var(--accent-green)] flex items-center justify-center shrink-0 border border-[color-mix(in_srgb,var(--accent-green)_30%,transparent)]">
+                          <CheckCircle size={15} />
+                        </div>
+                        <div className="min-w-0 flex-1 text-left">
+                          <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
+                            {concept.mediaFile.name}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-muted)]">
+                            {(concept.mediaFile.size / (1024 * 1024)).toFixed(2)} MB · Tap to replace
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 w-full">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--brand-subtle)] text-[var(--brand-primary)] flex items-center justify-center shrink-0 border border-[var(--border-subtle)]">
+                          <UploadCloud size={15} />
+                        </div>
+                        <div className="min-w-0 flex-1 text-left">
+                          <div className="text-xs font-semibold text-[var(--text-primary)]">
+                            Upload Audio / Video
+                          </div>
+                          <div className="text-[11px] text-[var(--text-muted)]">
+                            MP3, WAV, MP4, MOV · Tap to browse
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <small className="label-hint block mt-2">
+                  <small className="label-hint block mt-1.5">
                     {VIDEO_TYPES.find(t => t.id === concept.videoType)?.mediaRequired
                       ? 'Required for this video type. The system matches visuals to your media.'
                       : 'Optional. If left blank, video is built entirely from script.'}
@@ -1108,7 +1195,7 @@ export default function FilmStudioPage() {
         {step === 2 && (
           <div className="film-step-panel">
             <div className="step-panel-header">
-              <h2>🧑‍🎭 Character Builder</h2>
+              <h2 className="flex items-center gap-2"><Users size={20} className="text-[var(--text-muted)]"/> Character Builder</h2>
               <p>Add your main characters. The more detail you give, the more consistent they'll look across all scenes.</p>
             </div>
 
@@ -1135,7 +1222,7 @@ export default function FilmStudioPage() {
 
             {characters.length === 0 && (
               <div className="chars-empty-hint">
-                <div className="chars-empty-icon">💡</div>
+                <div className="chars-empty-icon"><Lightbulb size={24} style={{ color: "var(--accent-gold)" }} /></div>
                 <p>You can skip characters and let the AI create them, or add your own for better visual consistency.</p>
               </div>
             )}
@@ -1153,13 +1240,13 @@ export default function FilmStudioPage() {
         {step === 3 && (
           <div className="film-step-panel">
             <div className="step-panel-header">
-              <h2>🤖 AI Screenplay Generator</h2>
+              <h2 className="flex items-center gap-2"><BookOpen size={20} className="text-[var(--text-muted)]"/> AI Screenplay Generator</h2>
               <p>The AI will write your full {concept.duration}-minute screenplay with {estimatedScenes} scenes. This takes 1–3 minutes.</p>
             </div>
 
             <div className="generation-summary">
               <div className="summary-card">
-                <div className="summary-icon">🎬</div>
+                <div className="summary-icon"><Clapperboard size={16}/></div>
                 <div className="summary-label">Film Title</div>
                 <div className="summary-value">"{concept.title}"</div>
               </div>
@@ -1174,7 +1261,7 @@ export default function FilmStudioPage() {
                 <div className="summary-value">{concept.duration} min · {estimatedScenes} scenes</div>
               </div>
               <div className="summary-card">
-                <div className="summary-icon">🧑‍🎭</div>
+                <div className="summary-icon"><User size={16}/></div>
                 <div className="summary-label">Characters</div>
                 <div className="summary-value">{characters.length > 0 ? characters.map(c => c.name).join(', ') : 'AI-Generated'}</div>
               </div>
@@ -1191,10 +1278,10 @@ export default function FilmStudioPage() {
                 <div className="gen-status">
                   <div className="gen-title">AI Screenplay Director is writing your film…</div>
                   <div className="gen-substeps">
-                    <div className="gen-substep active">📖 Writing Story Bible &amp; Act Structure</div>
-                    <div className="gen-substep">🎭 Generating {estimatedScenes} scene descriptions</div>
-                    <div className="gen-substep">🎬 Assigning camera angles &amp; action types</div>
-                    <div className="gen-substep">💾 Saving screenplay to production queue</div>
+                    <div className="gen-substep active"><BookOpen size={13} style={{ display: "inline", marginRight: 5 }} />Writing Story Bible &amp; Act Structure</div>
+                    <div className="gen-substep"><User size={14} className="inline mr-1"/> Generating {estimatedScenes} scene descriptions</div>
+                    <div className="gen-substep"><Camera size={14} className="inline mr-1"/> Assigning camera angles &amp; action types</div>
+                    <div className="gen-substep"><Save size={13} style={{ display: "inline", marginRight: 5 }} />Saving screenplay to production queue</div>
                   </div>
                 </div>
               </div>
@@ -1203,7 +1290,7 @@ export default function FilmStudioPage() {
             <div className="step-footer">
               <button className="btn-secondary" onClick={() => setStep(2)} disabled={loading}>← Back</button>
               <button className="btn-primary btn-lg btn-generate" onClick={handleGenerate} disabled={loading}>
-                {loading ? 'Generating…' : '🤖 Generate Full Screenplay'}
+                {loading ? 'Generating…' : 'Generate Full Screenplay'}
               </button>
             </div>
           </div>
@@ -1211,12 +1298,12 @@ export default function FilmStudioPage() {
 
         {/* ── STEP 4: Review & Produce ── */}
         {step === 4 && !generatedScreenplay && (
-          <div className="film-step-panel p-12 text-center">
+          <div className="film-step-panel p-12">
             <div className="step-panel-header">
               <h2>⏳ Loading Screenplay...</h2>
               <p>Fetching your generated screenplay from the production queue.</p>
             </div>
-            <div className="step-footer mt-4 justify-center">
+            <div className="step-footer mt-4">
               <button className="btn-secondary" onClick={() => setStep(3)}>← Go Back to Generate</button>
             </div>
           </div>
@@ -1224,9 +1311,9 @@ export default function FilmStudioPage() {
 
         {/* ── STEP 4: Draft / Generation Failed ── */}
         {step === 4 && generatedScreenplay && generatedScreenplay.status === 'draft' && (
-          <div className="film-step-panel p-12 text-center">
+          <div className="film-step-panel p-12">
             <div className="step-panel-header">
-              <h2>⚠️ Generation Incomplete</h2>
+              <h2 className="flex items-center gap-2"><AlertTriangle size={20} className="text-[var(--accent-gold)]"/> Generation Incomplete</h2>
               <p>
                 The AI started generating &ldquo;{generatedScreenplay.title}&rdquo; but encountered an error
                 before finishing. The draft has been saved — you can retry without losing your settings.
@@ -1240,7 +1327,7 @@ export default function FilmStudioPage() {
             <div className="step-footer mt-4">
               <button className="btn-secondary" onClick={() => setStep(3)} disabled={loading}>← Back to Settings</button>
               <button className="btn-produce btn-lg" onClick={handleRegenerate} disabled={loading}>
-                {loading ? 'Retrying…' : '🔄 Retry Generation'}
+                {loading ? 'Retrying…' : <><AlertTriangle size={14} className="inline mr-1"/> Retry Generation</>}
               </button>
             </div>
           </div>
@@ -1268,14 +1355,14 @@ export default function FilmStudioPage() {
                 </div>
                 <div className="gen-substeps">
                   <div className={`gen-substep ${genStage ? 'done' : 'active'}`}>
-                    📖 Story Bible &amp; Act Structure
+                    <BookOpen size={13} style={{ display: "inline", marginRight: 5 }} />Story Bible &amp; Act Structure
                   </div>
                   <div className={`gen-substep ${genStage === 'scenes' ? 'active' : ''}`}>
-                    🎭 Generating {genTotalTarget} scene descriptions
+                    <User size={14} className="inline mr-1"/> Generating {genTotalTarget} scene descriptions
                     {genScenesSoFar > 0 ? ` (${genScenesSoFar}/${genTotalTarget})` : ''}
                   </div>
-                  <div className="gen-substep">🎬 Assigning camera angles &amp; action types</div>
-                  <div className="gen-substep">💾 Finalizing screenplay</div>
+                  <div className="gen-substep"><Camera size={14} className="inline mr-1"/> Assigning camera angles &amp; action types</div>
+                  <div className="gen-substep"><Save size={13} style={{ display: "inline", marginRight: 5 }} />Finalizing screenplay</div>
                 </div>
 
                 {generatedScreenplay.acts?.length > 0 && (
@@ -1311,12 +1398,12 @@ export default function FilmStudioPage() {
         {/* ── STEP 4: Catch-all fallback (in_production / completed / unknown status) ── */}
         {step === 4 && generatedScreenplay &&
           !['draft', 'ready', 'generating'].includes(generatedScreenplay.status) && (
-          <div className="film-step-panel p-12 text-center">
+          <div className="film-step-panel p-12">
             <div className="step-panel-header">
               <h2>
-                {generatedScreenplay.status === 'in_production' && '🎬 Already In Production'}
-                {generatedScreenplay.status === 'completed' && '✅ Production Complete'}
-                {!['in_production','completed'].includes(generatedScreenplay.status) && '❓ Unknown Status'}
+                {generatedScreenplay.status === 'in_production' && <><Clapperboard size={14} className="inline mr-1"/> Already In Production</>}
+                {generatedScreenplay.status === 'completed' && <><CheckCircle size={20} style={{ display: 'inline', marginRight: 6, color: 'var(--accent-green)' }} />Production Complete</>}
+                {!['in_production','completed'].includes(generatedScreenplay.status) && <><AlertTriangle size={20} style={{ display: 'inline', marginRight: 6 }} />Unknown Status</>}
               </h2>
               <p>
                 {generatedScreenplay.status === 'in_production' &&
@@ -1331,17 +1418,17 @@ export default function FilmStudioPage() {
               <button className="btn-secondary" onClick={() => setStep(3)}>← Back to Generate</button>
               {!['in_production','completed'].includes(generatedScreenplay.status) && (
                 <button className="btn-produce btn-lg" onClick={handleRegenerate} disabled={loading}>
-                  {loading ? 'Retrying…' : '🔄 Retry Generation'}
+                  {loading ? 'Retrying…' : <><AlertTriangle size={14} className="inline mr-1"/> Retry Generation</>}
                 </button>
               )}
               {generatedScreenplay.status === 'in_production' && (
                 <button className="btn-produce btn-lg" onClick={() => navigate('/app/history')}>
-                  📋 View Jobs Dashboard
+                  <ListChecks size={16} style={{ display: "inline", marginRight: 6 }} />View Jobs Dashboard
                 </button>
               )}
               {generatedScreenplay.status === 'completed' && (
                 <button className="btn-produce btn-lg" onClick={() => navigate('/app/history')}>
-                  📋 View Results
+                  <ListChecks size={16} style={{ display: "inline", marginRight: 6 }} />View Results
                 </button>
               )}
             </div>

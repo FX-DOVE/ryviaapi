@@ -11,6 +11,20 @@ import { Modal } from '../components/ui/Modal';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Film, Plus, Trash2, Calendar } from 'lucide-react';
 
+// Skeleton card matching the real project card layout
+function ProjectCardSkeleton() {
+  return (
+    <div className="project-card-skeleton">
+      <div className="project-card-skeleton-thumb" />
+      <div className="project-card-skeleton-body">
+        <div className="job-card-skeleton-line" style={{ width: '60%', height: '16px' }} />
+        <div className="job-card-skeleton-line" style={{ width: '85%', height: '12px', opacity: 0.5 }} />
+        <div className="job-card-skeleton-line" style={{ width: '40%', height: '10px', opacity: 0.4, marginTop: '8px' }} />
+      </div>
+    </div>
+  );
+}
+
 // Each studio gets a stable accent for quick visual recognition in the grid.
 // Sourced from design tokens so the palette stays on-brand.
 const STUDIO_ACCENTS = [
@@ -89,9 +103,19 @@ export default function ProjectsPage() {
   if (loading) {
     return (
       <AppPage className="projects-page">
-        <div className="flex flex-col items-center justify-center py-32 gap-5">
-          <div className="spinner w-10 h-10 border-[3px]" />
-          <span className="caption uppercase tracking-widest">Loading studios</span>
+        <PageHeader
+          title="Project Studios"
+          description="Manage your active cinematic productions."
+          actions={
+            <AppButton icon={Plus} onClick={() => setShowProjModal(true)}>
+              New Studio
+            </AppButton>
+          }
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <ProjectCardSkeleton key={i} />
+          ))}
         </div>
       </AppPage>
     );

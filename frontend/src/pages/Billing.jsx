@@ -3,7 +3,7 @@ import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
-import { CreditCard, Check } from 'lucide-react';
+import { CreditCard, Check, Lock } from 'lucide-react';
 
 export default function Billing() {
   const [credits, setCredits] = useState(1000);
@@ -65,9 +65,18 @@ export default function Billing() {
           </p>
         </div>
         <div className="billing-plan-card">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--text-muted)]">Current Plan</div>
-          <div className="text-lg font-bold text-[var(--text-primary)] mt-1">Pay-As-You-Go Pro</div>
-          <div className="caption mt-2">Storage Quota: 10 GB (Cloud R2)</div>
+          <div className="border-b border-[var(--glass-border)] pb-3 mb-3">
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--text-muted)]">Current Plan</div>
+            <div className="text-lg font-bold text-[var(--text-primary)] mt-1">Pay-As-You-Go Pro</div>
+          </div>
+          <div className="text-[12px] text-[var(--text-secondary)] flex items-center justify-between py-2 border-b border-[var(--glass-border)]">
+            <span className="text-[var(--text-muted)]">Storage Quota</span>
+            <span className="font-medium">10 GB (Cloud R2)</span>
+          </div>
+          <div className="text-[12px] text-[var(--text-secondary)] flex items-center justify-between py-2">
+            <span className="text-[var(--text-muted)]">Billing</span>
+            <span className="font-medium">Usage-based</span>
+          </div>
         </div>
       </AppCard>
 
@@ -103,10 +112,10 @@ export default function Billing() {
 
             <AppButton
               onClick={() => handlePurchase(p.name, p.credits)}
-              disabled={true}
-              variant={p.popular ? 'primary' : 'secondary'}
-              className="w-full text-base opacity-75"
-              icon={CreditCard}
+              disabled
+              variant="secondary"
+              className={`w-full text-base btn-coming-soon`}
+              icon={Lock}
             >
               Coming Soon
             </AppButton>

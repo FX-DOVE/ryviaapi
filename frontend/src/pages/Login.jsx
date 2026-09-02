@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { AuthLayout } from '../components/ui/AuthLayout';
 import { AppInput } from '../components/ui/AppInput';
 import { AppButton } from '../components/ui/AppButton';
@@ -51,7 +52,7 @@ export default function Login() {
     <AuthLayout title="Welcome Back" subtitle="Log in to your workspace">
       {error && (
         <div className="alert alert-error">
-          <span style={{ fontSize: '1.125rem' }}>⚠️</span> {error}
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} /> {error}
         </div>
       )}
 

@@ -84,7 +84,7 @@ function ImageLightboxModal({ preview, onClose }) {
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--bg-raised)]">
           <div className="flex items-center gap-2.5 min-w-0 pr-4">
-            <span className="text-lg">{preview.icon || '🖼️'}</span>
+            <span className="text-lg">{preview.icon || <Film size={16}/>}</span>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-[var(--text-primary)] truncate">{preview.title}</h3>
               {preview.badge && (
@@ -154,7 +154,7 @@ function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription }) 
       onPreview({
         title: `${name} — Master Character Lock`,
         badge: role ? `${role.toUpperCase()} • MASTER LOCK` : 'CHARACTER LOCK',
-        icon: '🧑‍🎭',
+        icon: <User size={16} />,
         src: imageUrl,
         label: 'Character Appearance & Physical Prompt',
         subtitle: physicalDescription || 'Master photorealistic character reference lock portrait.',
@@ -203,7 +203,7 @@ function EnvironmentPlate({ jobId, locationId, name, onPreview, description }) {
       onPreview({
         title: `${name || locationId} — Environment Reference Plate`,
         badge: 'MASTER LOCATION SET',
-        icon: '🏛️',
+        icon: <Film size={16} />,
         src: imageUrl,
         label: 'Location Environment & Lighting',
         subtitle: description || 'Master location plate establishing shot used as reference for all scenes in this set.',
@@ -478,7 +478,7 @@ export default function JobDetail() {
                     <h3 className="card-title">Pipeline Status</h3>
                     <p className="caption mt-1">Orchestrating AI models and assembling media</p>
                   </div>
-                  <div className="flex items-center gap-[var(--space-3)] bg-[var(--bg-elevated)] p-[var(--space-3)] rounded-[var(--radius-lg)] border border-[var(--border-subtle)] min-w-[300px]">
+                  <div className="flex items-center gap-[var(--space-3)] bg-[var(--bg-elevated)] p-[var(--space-3)] rounded-[var(--radius-lg)] border border-[var(--border-subtle)] w-full sm:w-auto sm:min-w-[300px]">
                     <ProgressRing progress={job.progress || 0} status={job.status} />
                     <div>
                       <div className="font-bold text-[var(--text-primary)]">
@@ -491,59 +491,63 @@ export default function JobDetail() {
                   </div>
                 </div>
 
-                {/* Pipeline Stepper */}
-                <div className="relative max-w-[800px] mx-auto px-[var(--space-2)]">
-                  <div className="absolute top-6 left-[10%] right-[10%] h-[2px] bg-[var(--border-default)] z-0"></div>
-                  <div
-                    style={{
-                      position: 'absolute', top: '24px', left: '10%', height: '2px',
-                      background: 'var(--brand-primary)', zIndex: 0, transition: 'width 700ms ease-in-out',
-                      width: `${Math.max(0, Math.min(100, (activeStepIndex / (PIPELINE_STEPS.length - 1)) * 80))}%`
-                    }}
-                  ></div>
+                {/* Pipeline Stepper — horizontally scrollable on narrow screens so
+                    icons/labels never compress or overlap (5 steps don't fit
+                    comfortably below ~480px at readable size). */}
+                <div className="relative max-w-[800px] mx-auto px-[var(--space-2)] overflow-x-auto sm:overflow-visible [-webkit-overflow-scrolling:touch]">
+                  <div className="relative min-w-[420px] sm:min-w-0">
+                    <div className="absolute top-6 left-[10%] right-[10%] h-[2px] bg-[var(--border-default)] z-0"></div>
+                    <div
+                      style={{
+                        position: 'absolute', top: '24px', left: '10%', height: '2px',
+                        background: 'var(--brand-primary)', zIndex: 0, transition: 'width 700ms ease-in-out',
+                        width: `${Math.max(0, Math.min(100, (activeStepIndex / (PIPELINE_STEPS.length - 1)) * 80))}%`
+                      }}
+                    ></div>
 
-                  <div className="relative z-10 flex justify-between">
-                    {PIPELINE_STEPS.map((step, index) => {
-                      const isPast = activeStepIndex > index || isComplete;
-                      const isCurrent = activeStepIndex === index && !isComplete && !isFailed;
-                      const isError = isFailed && activeStepIndex === index;
+                    <div className="relative z-10 flex justify-between">
+                      {PIPELINE_STEPS.map((step, index) => {
+                        const isPast = activeStepIndex > index || isComplete;
+                        const isCurrent = activeStepIndex === index && !isComplete && !isFailed;
+                        const isError = isFailed && activeStepIndex === index;
 
-                      let iconBg = 'var(--bg-elevated)';
-                      let iconBorder = 'var(--border-default)';
-                      let iconColor = 'var(--text-muted)';
-                      let iconShadow = 'none';
+                        let iconBg = 'var(--bg-elevated)';
+                        let iconBorder = 'var(--border-default)';
+                        let iconColor = 'var(--text-muted)';
+                        let iconShadow = 'none';
 
-                      if (isPast) {
-                        iconBg = 'var(--brand-primary)';
-                        iconBorder = 'var(--brand-primary)';
-                        iconColor = 'white';
-                      }
-                      if (isCurrent) {
-                        iconBg = 'var(--bg-surface)';
-                        iconBorder = 'var(--brand-primary)';
-                        iconColor = 'var(--brand-primary)';
-                        iconShadow = '0 0 15px rgba(var(--brand-primary-rgb), 0.3)';
-                      }
-                      if (isError) {
-                        iconBg = 'var(--accent-red)';
-                        iconBorder = 'var(--accent-red)';
-                        iconColor = 'white';
-                      }
+                        if (isPast) {
+                          iconBg = 'var(--brand-primary)';
+                          iconBorder = 'var(--brand-primary)';
+                          iconColor = 'white';
+                        }
+                        if (isCurrent) {
+                          iconBg = 'var(--bg-surface)';
+                          iconBorder = 'var(--brand-primary)';
+                          iconColor = 'var(--brand-primary)';
+                          iconShadow = '0 0 15px rgba(var(--brand-primary-rgb), 0.3)';
+                        }
+                        if (isError) {
+                          iconBg = 'var(--accent-red)';
+                          iconBorder = 'var(--accent-red)';
+                          iconColor = 'white';
+                        }
 
-                      return (
-                        <div key={step.id} className="flex flex-col items-center gap-3 w-1/5">
-                          <div 
-                            className="w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all duration-500 z-10"
-                            style={{ border: `2px solid ${iconBorder}`, background: iconBg, color: iconColor, boxShadow: iconShadow }}
-                          >
-                            {isPast ? <CheckCircle size={20} /> : step.icon}
+                        return (
+                          <div key={step.id} className="flex flex-col items-center gap-3 w-1/5">
+                            <div
+                              className="w-12 h-12 shrink-0 rounded-full flex items-center justify-center transition-all duration-500 z-10"
+                              style={{ border: `2px solid ${iconBorder}`, background: iconBg, color: iconColor, boxShadow: iconShadow }}
+                            >
+                              {isPast ? <CheckCircle size={20} /> : step.icon}
+                            </div>
+                            <div className={`text-xs font-semibold text-center ${isCurrent || isPast ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
+                              {step.label}
+                            </div>
                           </div>
-                          <div className={`text-xs font-semibold text-center ${isCurrent || isPast ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}>
-                            {step.label}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -886,7 +890,7 @@ export default function JobDetail() {
                                   setPreviewImage({
                                     title: `Scene ${scene.sceneNumber}: ${scene.location || 'Location'}`,
                                     badge: `SCENE ${scene.sceneNumber} KEYFRAME`,
-                                    icon: '🎬',
+                                    icon: <Clapperboard size={16} />,
                                     src: getSceneImageUrl(id, scene._id),
                                     label: 'Scene Action & Keyframe Framing',
                                     subtitle: scene.actionDescription || scene.summary || scene.description || 'Master scene anchor keyframe.',

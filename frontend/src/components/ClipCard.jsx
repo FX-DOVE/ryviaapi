@@ -187,7 +187,7 @@ export default function ClipCard({ clip, onUpdate, onApprove, onRegenerate, onDe
           )}
 
           {activeTab === 'camera' && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-slate-50 p-3 rounded-md border border-slate-100">
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">Shot Type</label>
                 {isEditing ? (
@@ -200,7 +200,7 @@ export default function ClipCard({ clip, onUpdate, onApprove, onRegenerate, onDe
                   <input type="text" className="w-full rounded-md border-slate-300 shadow-sm text-sm" value={editForm.cameraAngle} onChange={(e) => setEditForm({...editForm, cameraAngle: e.target.value})} />
                 ) : <div className="text-sm font-medium text-slate-800">{clip.cameraAngle || 'Eye Level'}</div>}
               </div>
-              <div className="bg-slate-50 p-3 rounded-md border border-slate-100 col-span-2">
+              <div className="bg-slate-50 p-3 rounded-md border border-slate-100 sm:col-span-2">
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">Camera Movement</label>
                 {isEditing ? (
                   <input type="text" className="w-full rounded-md border-slate-300 shadow-sm text-sm" value={editForm.cameraMovement} onChange={(e) => setEditForm({...editForm, cameraMovement: e.target.value})} />

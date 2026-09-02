@@ -89,7 +89,7 @@ export default function CharacterLibrary({ characters, setCharacters }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <AppInput
               placeholder="Age"
               value={age}
@@ -134,7 +134,7 @@ export default function CharacterLibrary({ characters, setCharacters }) {
           <p className="text-[var(--text-muted)] text-xs mt-1">Add a character to maintain consistent faces across every scene.</p>
         </div>
       ) : (
-        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-2 max-h-[50vh] sm:max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           {characters.map((c) => (
             <div key={c._id} className="p-3 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] flex items-center gap-3 relative group transition-all hover:bg-[var(--bg-overlay)] hover:border-[var(--border-default)]">
               {c.referenceImageUrl ? (

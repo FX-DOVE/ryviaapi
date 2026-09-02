@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { AuthLayout } from '../components/ui/AuthLayout';
 import { AppInput } from '../components/ui/AppInput';
 import { AppButton } from '../components/ui/AppButton';
@@ -52,7 +53,7 @@ export default function Register() {
     <AuthLayout title="Create Account" subtitle="Start your cinematic journey">
       {error && (
         <div className="alert alert-error">
-          <span style={{ fontSize: '1.125rem' }}>⚠️</span> {error}
+          <AlertTriangle size={18} /> {error}
         </div>
       )}
 

@@ -35,9 +35,13 @@ dump.rdb
 *.rdb
 *.zip
 redis.zip
+redis5.zip
+redis/
+redis5/
 *.tar.gz
 
 # ── AI Agents & IDE metadata ────────────────────────────────────────────────
+.playwright-mcp/
 .claude/
 .gemini/
 .agents/

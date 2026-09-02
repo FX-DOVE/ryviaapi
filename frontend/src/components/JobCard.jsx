@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Play, Download, Trash2, Clock, HardDrive, Film, Clapperboard } from 'lucide-react';
 import { getThumbnailUrl, getVideoStreamUrl } from '../api/jobs';
+import StatusBadge from './StatusBadge';
 
 function formatSize(bytes) {
   if (!bytes) return null;
@@ -157,19 +158,7 @@ export default function JobCard({ job, onDelete }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
         }}>
           {/* Status badge */}
-          <span
-            className="job-card-status-badge"
-            style={{ background: meta.bg, border: `1px solid ${meta.border}`, color: meta.color }}
-          >
-            {isRunning && (
-              <span style={{
-                width: '5px', height: '5px', borderRadius: '50%',
-                background: meta.color, display: 'inline-block',
-                animation: 'pulseDot 1.4s ease-in-out infinite',
-              }} />
-            )}
-            {meta.label}
-          </span>
+          <StatusBadge status={job.status} />
 
           {/* Preset badge */}
           {job.styleConfig?.preset && (
@@ -254,16 +243,16 @@ export default function JobCard({ job, onDelete }) {
               href={getVideoStreamUrl(job._id)}
               target="_blank"
               rel="noreferrer"
-              className="btn btn-primary"
-              style={{ flex: 1, height: '34px', minHeight: 'unset', fontSize: '12px', borderRadius: 'var(--radius-sm)' }}
+              className="btn btn-primary job-card-action-btn"
+              style={{ flex: 1, fontSize: '12px', borderRadius: 'var(--radius-sm)' }}
             >
               <Play size={13} /> Play
             </a>
             <a
               href={getVideoStreamUrl(job._id)}
               download={`${job.title}.mp4`}
-              className="btn btn-secondary"
-              style={{ width: '34px', height: '34px', minHeight: 'unset', padding: 0, borderRadius: 'var(--radius-sm)' }}
+              className="btn btn-secondary job-card-action-btn job-card-action-btn--icon"
+              style={{ padding: 0, borderRadius: 'var(--radius-sm)' }}
               title="Download"
             >
               <Download size={14} />

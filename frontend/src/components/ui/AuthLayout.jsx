@@ -62,7 +62,7 @@ export function AuthLayout({ children, title, subtitle }) {
       </div>
 
       {/* RIGHT PANEL - Form */}
-      <div className="flex-1 flex flex-col justify-center items-center p-8 relative z-10 bg-[var(--bg-base)]">
+      <div className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 relative z-10 bg-[var(--bg-base)]">
         <div className="w-full max-w-[420px] animation-page-enter">
 
           {/* Mobile Logo */}
@@ -71,7 +71,7 @@ export function AuthLayout({ children, title, subtitle }) {
             <h2 className="font-display font-bold text-2xl">AI Film Studio</h2>
           </div>
 
-          <div className="card p-8 shadow-2xl border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <div className="card p-5 sm:p-8 shadow-2xl border-[var(--border-subtle)] bg-[var(--bg-surface)]">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold mb-2">{title}</h1>
               <p className="subheading text-[var(--text-secondary)]">{subtitle}</p>

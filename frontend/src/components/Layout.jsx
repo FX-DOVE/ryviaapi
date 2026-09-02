@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Sidebar from './Sidebar';
+import BottomNav from './BottomNav';
 import useAppStore from '../store/useAppStore';
 import { CheckCircle, XCircle, Info, Menu } from 'lucide-react';
 import { useBodyScrollLock, useEscapeKey } from '../hooks/useUiBehaviors';
@@ -74,6 +75,7 @@ export default function Layout() {
       <main className="main-content">
         <Outlet />
       </main>
+      <BottomNav />
       <Toasts />
     </div>
   );
