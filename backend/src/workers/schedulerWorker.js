@@ -41,7 +41,7 @@ const GPU_WORKER_OPTS = {
   settings: WORKER_SETTINGS,
 };
 
-async function start() {
+export async function startWorkerCluster() {
   await connectDB();
   await checkRedisConfig();
   await eventBus.init();
@@ -181,7 +181,14 @@ async function start() {
   console.log('[SchedulerWorker] Core Workers successfully loaded — waiting for jobs');
 }
 
-start().catch((err) => {
-  console.error('[SchedulerWorker] Fatal startup error:', err);
-  process.exit(1);
-});
+// Auto-start if invoked directly via CLI (e.g. node src/workers/schedulerWorker.js)
+const isDirectCli = process.argv[1] && (
+  process.argv[1].endsWith('schedulerWorker.js') || 
+  process.argv[1].includes('schedulerWorker')
+);
+if (isDirectCli) {
+  startWorkerCluster().catch((err) => {
+    console.error('[SchedulerWorker] Fatal startup error:', err);
+    process.exit(1);
+  });
+}

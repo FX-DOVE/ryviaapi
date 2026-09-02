@@ -35,6 +35,36 @@ async function start() {
     // Register nightly maintenance cron (idempotent)
     await registerMaintenanceCron();
 
+    // Start Core Pipeline Workers in unified mode
+    if (process.env.DISABLE_EMBEDDED_WORKERS !== 'true') {
+      try {
+        const { startWorkerCluster } = await import('./src/workers/schedulerWorker.js');
+        await startWorkerCluster();
+        console.log('[API] Embedded worker cluster initialized');
+      } catch (err) {
+        console.error('[API] Warning: Failed to start embedded worker cluster:', err.message);
+      }
+    }
+
+    // Auto-resume stranded queued jobs
+    try {
+      const { default: Job } = await import('./src/models/Job.js');
+      const { startJobPipeline } = await import('./src/services/executionEngine.js');
+      const queuedJobs = await Job.find({
+        status: 'queued',
+        title: { $exists: true, $ne: '' },
+        workspaceId: { $exists: true, $ne: null }
+      });
+      for (const qj of queuedJobs) {
+        console.log(`[API] Resuming stranded queued job "${qj.title}" (${qj._id})...`);
+        startJobPipeline(String(qj._id)).catch(err =>
+          console.error(`[API] Failed to resume job ${qj._id}:`, err.message)
+        );
+      }
+    } catch (err) {
+      console.error('[API] Job recovery check error:', err.message);
+    }
+
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`[API] Server listening on http://0.0.0.0:${PORT}`);
       console.log(`[API] LAN access: http://192.168.1.125:${PORT}`);

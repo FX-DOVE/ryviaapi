@@ -267,14 +267,14 @@ export function getAIConfig() {
     video: {
       model: 'LTX-2.5',
       endpoint: `${RUNPOD_BASE}/${ltx.endpointId}`,
-      configured: ltx.configured(),
+      configured: typeof ltx.configured === 'function' ? ltx.configured() : Boolean(ltx.endpointId),
       resolution: ltx.resolution,
     },
     image: {
       model: 'Qwen-Image',
       endpoint: `${RUNPOD_BASE}/${qwen.t2iEndpoint}`,
       editEndpoint: `${RUNPOD_BASE}/${qwen.editEndpoint}`,
-      configured: qwen.configured(),
+      configured: typeof qwen.configured === 'function' ? qwen.configured() : Boolean(qwen.t2iEndpoint),
     },
   };
 }
