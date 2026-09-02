@@ -3669,10 +3669,32 @@ input[type='file']::file-selector-button:hover {
 
 /* ── 768px: mobile phones & tablets ───────────────────────── */
 @media (max-width: 768px) {
-  /* Header: must clear the fixed hamburger button (left:12px + 44px wide + 12px gap = 68px)
-     Use asymmetric padding: generous left, normal right */
+  /* Header: must clear the fixed hamburger button (left:12px + 44px wide + 12px gap = 68px) */
   .film-studio-header {
-    padding: 14px 16px 14px 68px;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(68px, calc(env(safe-area-inset-left) + 64px));
+  }
+
+  .film-studio-header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .film-step-indicator-mobile {
+    display: block;
+    width: 100%;
+  }
+
+  .film-step-indicator-mobile-track {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+  }
+
+  .film-step-indicator-mobile-fill {
+    background: linear-gradient(90deg, var(--brand-primary), var(--brand-light));
   }
 
   /* Body: full-width edge-to-edge */

@@ -48,12 +48,12 @@ function StepIndicator({ step, current }) {
           </div>
         ))}
       </div>
-      {/* Compact mobile-only replacement — text label + thin progress bar,
-          shown ≤900px where the full step row is hidden for space. */}
+      {/* Compact mobile-only replacement — text label + thin progress bar */}
       <div className="film-step-indicator-mobile">
-        <span className="film-step-indicator-mobile-label">
-          Step {current} of {STEPS.length} — {STEPS[current - 1]}
-        </span>
+        <div className="flex justify-between items-center text-[11px] font-medium text-[var(--text-secondary)] mb-1.5">
+          <span>Step {current} of {STEPS.length}</span>
+          <span className="text-[var(--brand-light)] font-semibold">{STEPS[current - 1]}</span>
+        </div>
         <div className="film-step-indicator-mobile-track">
           <div className="film-step-indicator-mobile-fill" style={{ width: `${progressPct}%` }} />
         </div>
@@ -954,33 +954,44 @@ export default function FilmStudioPage() {
     <div className="film-studio-page">
       {/* Header */}
       <div className="film-studio-header">
-        <div className="film-studio-header-content flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="film-studio-brand flex items-center gap-3">
-            <div className="film-studio-icon"><Clapperboard size={24}/></div>
-            <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl font-bold text-[var(--text-primary)] m-0">Film Studio</h1>
+        <div className="film-studio-header-content">
+          {/* Top Bar: Title + Project Badge + Switch Button */}
+          <div className="flex items-center justify-between w-full min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="film-studio-icon hidden sm:flex shrink-0">
+                <Clapperboard size={22}/>
+              </div>
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-[var(--text-primary)] m-0 shrink-0">
+                  Film Studio
+                </h1>
                 {activeProject && (
-                  <span className="px-3 py-1 rounded-full bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border border-[color-mix(in_srgb,var(--accent-green)_30%,transparent)] text-[var(--accent-green)] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 max-w-[140px] sm:max-w-xs">
-                    <span className="w-2 h-2 rounded-full shrink-0 bg-[var(--accent-green)] animate-pulse" />
+                  <span className="px-2 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border border-[color-mix(in_srgb,var(--accent-green)_30%,transparent)] text-[var(--accent-green)] text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1 max-w-[110px] sm:max-w-[160px] shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--accent-green)] animate-pulse" />
                     <span className="truncate">{activeProject.name}</span>
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[var(--text-secondary)] m-0 mt-1">Generate feature-length AI films from your imagination</p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-4 flex-wrap w-full md:w-auto">
             <button
               onClick={() => navigate('/app/projects')}
-              className="px-4 py-2 rounded-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5 shrink-0 ml-2"
             >
-              <Folder size={14} /> Switch Studio
+              <Folder size={13} />
+              <span className="hidden sm:inline">Switch Studio</span>
+              <span className="sm:hidden">Switch</span>
             </button>
-            <div className="flex-1 min-w-[140px]">
-              <StepIndicator step={step} current={step} />
-            </div>
+          </div>
+
+          {/* Desktop Subtitle */}
+          <p className="hidden md:block text-xs text-[var(--text-secondary)] m-0 mt-1">
+            Generate feature-length AI films from your imagination
+          </p>
+
+          {/* Step Indicator (desktop & mobile) */}
+          <div className="w-full md:w-auto md:ml-auto mt-2 md:mt-0">
+            <StepIndicator step={step} current={step} />
           </div>
         </div>
       </div>
