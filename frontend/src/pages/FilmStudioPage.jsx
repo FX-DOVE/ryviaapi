@@ -6,7 +6,7 @@ import { Settings,
   Video, BookOpen, Camera, UploadCloud, X, Plus, Sparkles,
 } from 'lucide-react';
 import { filmCharactersApi, screenplaysApi } from '../api/filmStudio';
-import { getProject } from '../api/projects';
+import { getProject, createProject, updateProject } from '../api/projects';
 import { useScreenplaySocket } from '../hooks/useSocket';
 import useAppStore from '../store/useAppStore';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -592,7 +592,23 @@ export default function FilmStudioPage() {
   const { confirm, confirmDialog } = useConfirm();
   const [projectLoading, setProjectLoading] = useState(true);
 
-  const [step, setStep] = useState(1);
+  const DEFAULT_CONCEPT = {
+    title: '',
+    videoType: 'documentary',
+    aspectRatio: '16:9',
+    synopsis: '',
+    duration: 3,
+    themes: '',
+    additionalSettings: '',
+    mediaFile: null,
+  };
+
+  const [step, setStep] = useState(() => {
+    if (window.location.search.includes('new=true')) return 1;
+    const saved = localStorage.getItem('film_studio_step');
+    const num = parseInt(saved, 10);
+    return (num >= 1 && num <= 4) ? num : 1;
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [generatedScreenplay, setGeneratedScreenplay] = useState(null);
@@ -605,15 +621,16 @@ export default function FilmStudioPage() {
   const [researchNotes, setResearchNotes] = useState('');
 
   // Film concept form
-  const [concept, setConcept] = useState({
-    title: '',
-    videoType: 'documentary',
-    aspectRatio: '16:9',
-    synopsis: '',
-    duration: 3,
-    themes: '',
-    additionalSettings: '',
-    mediaFile: null,
+  const [concept, setConcept] = useState(() => {
+    if (window.location.search.includes('new=true')) return DEFAULT_CONCEPT;
+    try {
+      const saved = localStorage.getItem('film_studio_concept');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_CONCEPT, ...parsed, mediaFile: null };
+      }
+    } catch {}
+    return DEFAULT_CONCEPT;
   });
 
   // Sync step and concept to local storage
@@ -659,6 +676,10 @@ export default function FilmStudioPage() {
             }
           } catch (err) {
             console.error('Error fetching project:', err);
+            if (err.response?.status === 404) {
+              localStorage.removeItem('film_studio_project_id');
+              setActiveProject(null);
+            }
           }
         } else {
           const savedProjId = localStorage.getItem('film_studio_project_id');
@@ -741,14 +762,19 @@ export default function FilmStudioPage() {
                 videoType: loaded.genre || prev.videoType,
                 duration: Math.ceil((loaded.totalScenes || 18) / 6),
               }));
-            } else if (currentProj && isMounted) {
+            } else if (isMounted) {
               setGeneratedScreenplay(null);
-              setStep(1);
-              setConcept(prev => ({
-                ...prev,
-                title: currentProj.name || prev.title,
-                synopsis: currentProj.description || prev.synopsis,
-              }));
+              // Restore the step user was on (step 1, 2, or 3) from localStorage
+              const savedStep = parseInt(localStorage.getItem('film_studio_step'), 10) || 1;
+              setStep(savedStep < 4 ? savedStep : 1);
+              if (currentProj) {
+                setConcept(prev => ({
+                  ...prev,
+                  title: currentProj.name || prev.title,
+                  synopsis: currentProj.description || prev.synopsis,
+                  videoType: currentProj.style?.preset || prev.videoType,
+                }));
+              }
             }
           } catch (err) {
             console.error('Failed to load screenplay:', err);
@@ -881,25 +907,113 @@ export default function FilmStudioPage() {
     }
   };
 
+  // ── Auto-save project to MongoDB ──────────────────────────────────────────
+  const syncProjectToDatabase = async (overrideConcept = null) => {
+    const c = overrideConcept || concept;
+    const titleToSave = c.title?.trim() || 'Untitled Production';
+    const synopsisToSave = c.synopsis?.trim() || '';
+    const videoTypeToSave = c.videoType || 'documentary';
+
+    const currentProjId = projectId || activeProject?._id;
+
+    try {
+      if (currentProjId) {
+        // Update existing project in MongoDB
+        const { data: updatedProj } = await updateProject(currentProjId, {
+          name: titleToSave,
+          description: synopsisToSave,
+          style: {
+            preset: videoTypeToSave,
+            camera: 'hollywood',
+            lighting: 'dusk',
+            colorGrade: 'cinematic',
+            motionLevel: 'medium',
+            emotion: 'neutral',
+            musicStyle: 'cinematic',
+          }
+        });
+        if (updatedProj) {
+          setActiveProject(updatedProj);
+          return updatedProj._id;
+        }
+        return currentProjId;
+      } else {
+        // Create new project in MongoDB
+        const { data: newProj } = await createProject({
+          name: titleToSave,
+          description: synopsisToSave,
+          style: {
+            preset: videoTypeToSave,
+            camera: 'hollywood',
+            lighting: 'dusk',
+            colorGrade: 'cinematic',
+            motionLevel: 'medium',
+            emotion: 'neutral',
+            musicStyle: 'cinematic',
+          }
+        });
+        if (newProj?._id) {
+          setActiveProject(newProj);
+          localStorage.setItem('film_studio_project_id', newProj._id);
+          navigate(`/app/film-studio/${newProj._id}`, { replace: true });
+          return newProj._id;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to sync project to database:', err);
+    }
+    return currentProjId || null;
+  };
+
+  // ── Step 1 to Step 2: Proceed to Characters with auto-database save ─────────
+  const handleProceedToCharacters = async () => {
+    if (!step1Valid) return;
+    setLoading(true);
+    try {
+      const projId = await syncProjectToDatabase();
+      // Ensure any characters in state are saved to database with this projId
+      if (projId && characters.length > 0) {
+        const persistedChars = await Promise.all(
+          characters.map(async (char) => {
+            if (char._id && !String(char._id).startsWith('temp-') && String(char._id).length === 24) {
+              return char;
+            }
+            try {
+              const { data } = await filmCharactersApi.create({
+                name: char.name,
+                role: char.role || 'supporting',
+                physicalDescription: char.physicalDescription || '',
+                backstory: char.backstory || '',
+                projectId: projId,
+              });
+              return data.character;
+            } catch {
+              return char;
+            }
+          })
+        );
+        setCharacters(persistedChars);
+      }
+      setStep(2);
+      localStorage.setItem('film_studio_step', '2');
+    } catch (err) {
+      setError('Could not advance to characters. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ── Start a completely new studio film ────────────────────────────────────
   const handleStartNewFilm = () => {
     localStorage.removeItem('film_studio_screenplay');
     localStorage.removeItem('film_studio_screenplay_id');
     localStorage.removeItem('film_studio_project_id');
+    localStorage.removeItem('film_studio_concept');
     localStorage.setItem('film_studio_step', '1');
     setActiveProject(null);
     setGeneratedScreenplay(null);
     setCharacters([]);
-    setConcept({
-      title: '',
-      videoType: 'documentary',
-      aspectRatio: '16:9',
-      synopsis: '',
-      duration: 3,
-      themes: '',
-      additionalSettings: '',
-      mediaFile: null,
-    });
+    setConcept(DEFAULT_CONCEPT);
     setStep(1);
     navigate('/app/film-studio?new=true', { replace: true });
   };
@@ -918,26 +1032,42 @@ export default function FilmStudioPage() {
       });
 
       if (data?.expandedSynopsis) {
-        setConcept(c => ({
-          ...c,
-          title: (!c.title || c.title.trim().length < 3 || c.title === 'Untitled') ? (data.suggestedTitle || c.title) : c.title,
+        const updatedConcept = {
+          ...concept,
+          title: (!concept.title || concept.title.trim().length < 3 || concept.title === 'Untitled') ? (data.suggestedTitle || concept.title) : concept.title,
           synopsis: data.expandedSynopsis,
-          themes: data.themes?.length ? data.themes.join(', ') : c.themes,
-        }));
+          themes: data.themes?.length ? data.themes.join(', ') : concept.themes,
+        };
+        setConcept(updatedConcept);
+
+        // Automatically save this newly researched project to MongoDB immediately
+        const projId = await syncProjectToDatabase(updatedConcept);
 
         if (data.researchHighlights || data.videoTypeDirectives) {
           setResearchNotes(`${data.researchHighlights ? data.researchHighlights + ' ' : ''}Tailored specifically as a ${selectedType} script.`);
         }
 
-        // If characters were suggested and user has no characters yet, auto-suggest them
-        if ((!characters || characters.length === 0) && data.suggestedCharacters?.length) {
-          setCharacters(data.suggestedCharacters.map(sc => ({
-            _id: 'temp-' + Math.random().toString(36).slice(2, 9),
-            name: sc.name,
-            role: sc.role || 'supporting',
-            physicalDescription: sc.physicalDescription || '',
-            backstory: sc.backstory || '',
-          })));
+        // Save suggested characters directly to MongoDB linked to this project
+        if (data.suggestedCharacters?.length && (!characters || characters.length === 0)) {
+          if (projId) {
+            try {
+              const createdChars = await Promise.all(
+                data.suggestedCharacters.map(async (sc) => {
+                  const { data: charData } = await filmCharactersApi.create({
+                    name: sc.name,
+                    role: sc.role || 'supporting',
+                    physicalDescription: sc.physicalDescription || '',
+                    backstory: sc.backstory || '',
+                    projectId: projId,
+                  });
+                  return charData.character;
+                })
+              );
+              setCharacters(createdChars);
+            } catch (err) {
+              console.error('Failed to auto-create suggested characters in database:', err);
+            }
+          }
         }
       }
     } catch (err) {
@@ -1332,10 +1462,10 @@ export default function FilmStudioPage() {
               </div>
               <button
                 className="btn btn-primary px-8 min-h-[48px] text-[1.1rem]"
-                disabled={!step1Valid}
-                onClick={() => setStep(2)}
+                disabled={!step1Valid || loading}
+                onClick={handleProceedToCharacters}
               >
-                Next: Add Characters →
+                {loading ? 'Saving…' : 'Next: Add Characters →'}
               </button>
             </div>
           </div>
