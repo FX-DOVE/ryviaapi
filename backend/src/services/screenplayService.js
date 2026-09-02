@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { generateWithFallback } from '../providers/reasoningProvider.js';
 import Screenplay from '../models/Screenplay.js';
 import FilmCharacter from '../models/FilmCharacter.js';
@@ -324,8 +325,9 @@ export async function createScreenplayDraft({
   _existingId = null,  // If set, reset existing doc instead of creating new one
 }) {
   // Load character records + refresh their cached seed prompts
-  const characters = filmCharacterIds.length > 0
-    ? await FilmCharacter.find({ _id: { $in: filmCharacterIds } })
+  const validCharIds = (filmCharacterIds || []).filter(id => id && mongoose.Types.ObjectId.isValid(id));
+  const characters = validCharIds.length > 0
+    ? await FilmCharacter.find({ _id: { $in: validCharIds } })
     : [];
   for (const char of characters) {
     if (!char.seedPrompt) {

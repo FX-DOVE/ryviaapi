@@ -64,8 +64,10 @@ function StepIndicator({ step, current }) {
 
 // Build a proxy URL through our own API so the image never expires
 function charImageUrl(char) {
-  if (char._id) return `/api/v1/film-characters/${char._id}/reference-image`;
-  return null;
+  if (char?._id && !String(char._id).startsWith('temp-') && String(char._id).length === 24) {
+    return `/api/v1/film-characters/${char._id}/reference-image`;
+  }
+  return char?.referenceImageUrl || char?.referenceImage || null;
 }
 
 function CharacterCard({ char, onEdit, onDelete, onPreview, index }) {
@@ -825,7 +827,9 @@ export default function FilmStudioPage() {
       delete payload.referenceImage;
       delete payload.referenceImageUrl;
 
-      if (editingChar?._id) {
+      const isPersistedChar = editingChar?._id && !String(editingChar._id).startsWith('temp-') && String(editingChar._id).length === 24;
+
+      if (isPersistedChar) {
         const { data } = await filmCharactersApi.update(editingChar._id, payload);
         charId = editingChar._id;
         finalChar = data.character;
@@ -836,7 +840,7 @@ export default function FilmStudioPage() {
       }
 
       // If a new image was uploaded, send it to the multipart endpoint
-      if (imageFile) {
+      if (imageFile && charId) {
         const formData = new FormData();
         formData.append('file', imageFile);
         const { data } = await filmCharactersApi.uploadReferenceImage(charId, formData);
@@ -844,7 +848,7 @@ export default function FilmStudioPage() {
       }
 
       if (editingChar?._id) {
-        setCharacters(cs => cs.map(c => c._id === charId ? finalChar : c));
+        setCharacters(cs => cs.map(c => c._id === editingChar._id ? finalChar : c));
       } else {
         setCharacters(cs => [...cs, finalChar]);
       }
@@ -867,7 +871,10 @@ export default function FilmStudioPage() {
     });
     if (!ok) return;
     try {
-      await filmCharactersApi.delete(char._id);
+      const isPersistedChar = char?._id && !String(char._id).startsWith('temp-') && String(char._id).length === 24;
+      if (isPersistedChar) {
+        await filmCharactersApi.delete(char._id);
+      }
       setCharacters(cs => cs.filter(c => c._id !== char._id));
     } catch (err) {
       setError('Failed to delete character');
@@ -960,7 +967,7 @@ export default function FilmStudioPage() {
         aspectRatio: concept.aspectRatio,
         targetDurationMinutes: concept.duration,
         additionalSettings: concept.additionalSettings,
-        filmCharacterIds: characters.map(c => c._id),
+        filmCharacterIds: characters.map(c => c._id).filter(id => id && !String(id).startsWith('temp-') && String(id).length === 24),
         projectId: currentProjId || null,
       });
 

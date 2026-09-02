@@ -8,8 +8,17 @@ import { upload } from '../middleware/upload.js';
 import { uploadToCloud, getSignedUrl } from '../services/storageService.js';
 import fs from 'fs';
 import axios from 'axios';
+import mongoose from 'mongoose';
 
 const router = express.Router();
+
+// Validate ObjectId for all routes containing :id parameter
+router.param('id', (req, res, next, id) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: `Invalid character ID: ${id}` });
+  }
+  next();
+});
 
 // ── List all characters for a workspace ──────────────────────────────────────
 router.get('/', async (req, res, next) => {
