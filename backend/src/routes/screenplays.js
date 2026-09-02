@@ -98,9 +98,22 @@ router.post('/generate', async (req, res, next) => {
 
     console.log(`[ScreenplayRoute] Generating screenplay for "${title}"...`);
 
-    // Auto-create a Project Studio if none was provided, ensuring every film
-    // appears in the user's Projects Studio list and can always be revisited.
+    // Auto-create a Project Studio if none was provided, or if the title
+    // differs from the currently active project (new film creation).
     let resolvedProjectId = projectId || null;
+    if (resolvedProjectId) {
+      try {
+        const existingProj = await Project.findOne({ _id: resolvedProjectId, workspaceId: req.workspaceId });
+        if (existingProj && existingProj.name?.trim().toLowerCase() !== title.trim().toLowerCase()) {
+          // New title in film studio -> spin up a new Studio project automatically
+          console.log(`[ScreenplayRoute] Title "${title}" differs from project "${existingProj.name}". Creating a new Studio.`);
+          resolvedProjectId = null;
+        }
+      } catch (checkErr) {
+        resolvedProjectId = null;
+      }
+    }
+
     if (!resolvedProjectId && req.userId) {
       try {
         const autoProj = new Project({
@@ -122,7 +135,7 @@ router.post('/generate', async (req, res, next) => {
         });
         await autoProj.save();
         resolvedProjectId = autoProj._id;
-        console.log(`[ScreenplayRoute] Auto-created Project "${title}" (${resolvedProjectId})`);
+        console.log(`[ScreenplayRoute] Auto-created Project Studio "${title}" (${resolvedProjectId})`);
       } catch (projErr) {
         console.error('[ScreenplayRoute] Could not auto-create project:', projErr.message);
       }

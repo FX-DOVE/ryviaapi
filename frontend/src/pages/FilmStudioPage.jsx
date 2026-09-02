@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Settings, 
   Film, User, Clapperboard, Users, Folder, Lightbulb, Tag, Music, Ticket,
   Edit2, Trash2, AlertTriangle, CheckCircle, ListChecks, Save,
-  Video, BookOpen, Camera, UploadCloud, X,
+  Video, BookOpen, Camera, UploadCloud, X, Plus,
 } from 'lucide-react';
 import { filmCharactersApi, screenplaysApi } from '../api/filmStudio';
 import { getProject } from '../api/projects';
@@ -872,12 +872,39 @@ export default function FilmStudioPage() {
     }
   };
 
+  // ── Start a completely new studio film ────────────────────────────────────
+  const handleStartNewFilm = () => {
+    localStorage.removeItem('film_studio_screenplay');
+    localStorage.removeItem('film_studio_screenplay_id');
+    localStorage.removeItem('film_studio_project_id');
+    localStorage.setItem('film_studio_step', '1');
+    setActiveProject(null);
+    setGeneratedScreenplay(null);
+    setCharacters([]);
+    setConcept({
+      title: '',
+      videoType: 'documentary',
+      aspectRatio: '16:9',
+      synopsis: '',
+      duration: 3,
+      themes: '',
+      additionalSettings: '',
+      mediaFile: null,
+    });
+    setStep(1);
+    navigate('/app/film-studio?new=true', { replace: true });
+  };
+
   // ── Step 3: Generate Screenplay ────────────────────────────────────────────
   const handleGenerate = async () => {
     setLoading(true);
     setError('');
     try {
-      const currentProjId = projectId || activeProject?._id;
+      // If the current project has a different name than the concept title,
+      // it's a new studio film! Treat projectId as null so a brand new Project Studio is created.
+      const isSameProject = activeProject && activeProject.name?.trim().toLowerCase() === concept.title.trim().toLowerCase();
+      const currentProjId = isSameProject ? (projectId || activeProject._id) : null;
+
       const { data } = await screenplaysApi.generate({
         title: concept.title,
         genre: concept.videoType, // Map VideoType to genre for backend compatibility
@@ -891,10 +918,20 @@ export default function FilmStudioPage() {
         filmCharacterIds: characters.map(c => c._id),
         projectId: currentProjId || null,
       });
+
       setGeneratedScreenplay(data.screenplay);
+
+      // If a new Project Studio was created / assigned, switch studio context to it
       if (data.screenplay?.projectId) {
-        localStorage.setItem('film_studio_project_id', data.screenplay.projectId);
+        const newProjId = String(data.screenplay.projectId);
+        localStorage.setItem('film_studio_project_id', newProjId);
+        navigate(`/app/film-studio/${newProjId}`, { replace: true });
+        try {
+          const projRes = await getProject(newProjId);
+          if (projRes?.data) setActiveProject(projRes.data);
+        } catch {}
       }
+
       setStep(4);
     } catch (err) {
       setError(err.response?.data?.error || 'Screenplay generation failed. Please try again.');
@@ -977,14 +1014,26 @@ export default function FilmStudioPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => navigate('/app/projects')}
-              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5 shrink-0 ml-2"
-            >
-              <Folder size={13} />
-              <span className="hidden sm:inline">Switch Studio</span>
-              <span className="sm:hidden">Switch</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              <button
+                onClick={handleStartNewFilm}
+                className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-dark)] text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 shadow-sm"
+                title="Start a new film"
+              >
+                <Plus size={13} />
+                <span className="hidden sm:inline">New Film</span>
+                <span className="sm:hidden">New</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/app/projects')}
+                className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5 shrink-0"
+              >
+                <Folder size={13} />
+                <span className="hidden sm:inline">Switch Studio</span>
+                <span className="sm:hidden">Studios</span>
+              </button>
+            </div>
           </div>
 
           {/* Desktop Subtitle */}
