@@ -3,6 +3,7 @@ import Screenplay from '../models/Screenplay.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 import { compileCharacterSeedPrompt } from './characterConsistencyService.js';
 import { emitWorkspaceEvent } from '../config/socket.js';
+import { researchAndExpandConcept } from './webResearchService.js';
 
 /**
  * SCREENPLAY SERVICE — AI Feature Film Writer
@@ -41,19 +42,20 @@ function emitScreenplayUpdate(screenplay, patch) {
 
 // ─── Stage 1: Story Bible ──────────────────────────────────────────────────────
 
-async function generateStoryBible({ title, genre, synopsis, characters, tone, themes, animationStyle, additionalSettings, jobId }) {
+async function generateStoryBible({ title, genre, synopsis, characters, tone, themes, animationStyle, additionalSettings, videoTypeGuidelines = '', jobId }) {
   const characterList = characters.map(c =>
     `- ${c.name} (${c.role}): ${c.physicalDescription || c.backstory || 'undefined'}`
   ).join('\n');
 
-  const systemPrompt = `You are a world-class screenplay writer and story architect. You create compelling, emotionally rich feature films with strong character arcs, dramatic tension, and satisfying resolutions. Your stories are suitable for professional production.
+  const systemPrompt = `You are a world-class screenplay writer, story architect, and showrunner. You create compelling, emotionally rich, trending films with strong character arcs, dramatic tension, and satisfying resolutions. Your stories are suitable for professional production.
 
 CRITICAL QUALITY STANDARDS:
 - Every act must have a CLEAR DRAMATIC PURPOSE — not just "things happen"
 - Character arcs must show SPECIFIC emotional/moral transformation
 - The story must have CAUSE AND EFFECT — each act's events must directly cause the next act's crisis
 - Dialogue moments and key reveals must be planned into the act structure
-- The synopsis provided by the user is the CORE STORY — expand it faithfully, do NOT contradict or ignore the user's premise`;
+- The synopsis provided by the user is the CORE STORY — expand it faithfully with trending cultural and cinematic depth
+${videoTypeGuidelines ? `\nCRITICAL FORMAT DIRECTIVES FOR ${String(genre).toUpperCase()}:\n${videoTypeGuidelines}\n` : ''}`;
 
   const userPrompt = `Write a detailed Story Bible for the following feature film:
 
@@ -132,7 +134,7 @@ function buildRollingContextBrief(previousScenes, characterArcs = [], maxScenes 
   return `\nSTORY SO FAR (what happened in the previous scenes — you MUST continue from here):\n${sceneBriefs}${arcBrief}\n`;
 }
 
-async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, sceneOffset, jobId, previousScenes = [], characterArcs = [], storyBible = '' }) {
+async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, videoTypeGuidelines = '', sceneOffset, jobId, previousScenes = [], characterArcs = [], storyBible = '' }) {
   // Build a rich character reference list — not just names.
   // The LLM needs physical descriptions and ethnicity to generate accurate scene
   // descriptions; name-only causes it to invent generic appearances.
@@ -146,10 +148,10 @@ async function generateActScenes({ title, actData, characters, animationStyle, a
 
   const rollingContext = buildRollingContextBrief(previousScenes, characterArcs);
 
-  const systemPrompt = `You are a master screenwriter and story architect generating detailed scene breakdowns for a ${animationStyle} feature film.
+  const systemPrompt = `You are a master screenwriter and story architect generating detailed scene breakdowns for a ${animationStyle} production.
 
 Your scenes must tell a COHERENT, COMPELLING STORY that flows logically from one scene to the next like a real movie. You write dialogue that sounds like real people talking — specific, emotional, and purposeful. Every line must advance the plot or reveal character.
-
+${videoTypeGuidelines ? `\nCRITICAL SCENE DIRECTING GUIDELINES:\n${videoTypeGuidelines}\n` : ''}
 You NEVER write generic placeholder dialogue like "I can't believe this" or "We need to talk". Your dialogue is sharp, in-character, and drives the story forward.
 
 When writing character appearances and actions, you MUST respect the established physical descriptions provided — do not invent generic or different appearances.`;
@@ -406,17 +408,59 @@ export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {})
   console.log(`[ScreenplayService] Generating "${screenplay.title}" (attempt ${screenplay.generationAttempts}, ${targetDurationMinutes} min)`);
 
   try {
+    // ── Stage 0: Creative Web Research & Trend Synthesis ──────────
+    console.log(`[ScreenplayService] Stage 0: Researching web trends for "${screenplay.title}" (${screenplay.genre})...`);
+    emitScreenplayUpdate(screenplay, { status: 'generating', stage: 'research' });
+
+    let workingSynopsis = screenplay.synopsis;
+    let formatGuidelines = '';
+
+    try {
+      const research = await researchAndExpandConcept({
+        title: screenplay.title,
+        synopsis: screenplay.synopsis,
+        videoType: screenplay.genre,
+        jobId,
+      });
+
+      if (research.expandedSynopsis && (!screenplay.synopsis || screenplay.synopsis.length < 350)) {
+        workingSynopsis = research.expandedSynopsis;
+        screenplay.synopsis = research.expandedSynopsis;
+      }
+      if (research.themes?.length && (!screenplay.themes || !screenplay.themes.length)) {
+        screenplay.themes = research.themes;
+      }
+      formatGuidelines = research.videoTypeDirectives || '';
+
+      // Auto-populate characters if user left cast empty
+      if ((!screenplay.characters || screenplay.characters.length === 0) && research.suggestedCharacters?.length) {
+        screenplay.characters = research.suggestedCharacters.map(c => ({
+          name: c.name,
+          role: c.role || 'supporting',
+          age: c.age || 30,
+          physicalDescription: c.physicalDescription || '',
+          backstory: c.backstory || '',
+          arc: '',
+        }));
+      }
+
+      await screenplay.save();
+    } catch (researchErr) {
+      console.warn('[ScreenplayService] Stage 0 research warning, proceeding with existing concept:', researchErr.message);
+    }
+
     // ── Stage 1: Story Bible ──────────────────────────────────────
     console.log(`[ScreenplayService] Stage 1: Generating story bible...`);
     const bible = await generateStoryBible({
       title: screenplay.title,
       genre: screenplay.genre,
-      synopsis: screenplay.synopsis,
+      synopsis: workingSynopsis,
       tone: screenplay.tone,
       themes: screenplay.themes || [],
       animationStyle: screenplay.animationStyle,
       additionalSettings: screenplay.additionalSettings,
       characters: screenplay.characters,
+      videoTypeGuidelines: formatGuidelines,
       jobId,
     });
 
@@ -466,6 +510,7 @@ export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {})
         animationStyle: screenplay.animationStyle,
         additionalSettings: screenplay.additionalSettings,
         characters: screenplay.characters,
+        videoTypeGuidelines: formatGuidelines,
         sceneOffset,
         jobId,
         // NEW: rolling context from all previous scenes

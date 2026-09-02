@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Settings, 
   Film, User, Clapperboard, Users, Folder, Lightbulb, Tag, Music, Ticket,
   Edit2, Trash2, AlertTriangle, CheckCircle, ListChecks, Save,
-  Video, BookOpen, Camera, UploadCloud, X, Plus,
+  Video, BookOpen, Camera, UploadCloud, X, Plus, Sparkles,
 } from 'lucide-react';
 import { filmCharactersApi, screenplaysApi } from '../api/filmStudio';
 import { getProject } from '../api/projects';
@@ -599,6 +599,8 @@ export default function FilmStudioPage() {
   const [characters, setCharacters] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
   const [isDraggingMedia, setIsDraggingMedia] = useState(false);
+  const [isExpanding, setIsExpanding] = useState(false);
+  const [researchNotes, setResearchNotes] = useState('');
 
   // Film concept form
   const [concept, setConcept] = useState({
@@ -895,6 +897,49 @@ export default function FilmStudioPage() {
     navigate('/app/film-studio?new=true', { replace: true });
   };
 
+  // ── AI Research & Trend Expansion ──────────────────────────────────────────
+  const handleAiResearchExpand = async () => {
+    if (!concept.synopsis.trim()) return;
+    setIsExpanding(true);
+    setError('');
+    try {
+      const selectedType = VIDEO_TYPES.find(t => t.id === concept.videoType)?.label || concept.videoType;
+      const { data } = await screenplaysApi.researchExpand({
+        title: concept.title,
+        synopsis: concept.synopsis,
+        videoType: concept.videoType,
+      });
+
+      if (data?.expandedSynopsis) {
+        setConcept(c => ({
+          ...c,
+          title: (!c.title || c.title.trim().length < 3 || c.title === 'Untitled') ? (data.suggestedTitle || c.title) : c.title,
+          synopsis: data.expandedSynopsis,
+          themes: data.themes?.length ? data.themes.join(', ') : c.themes,
+        }));
+
+        if (data.researchHighlights || data.videoTypeDirectives) {
+          setResearchNotes(`${data.researchHighlights ? data.researchHighlights + ' ' : ''}Tailored specifically as a ${selectedType} script.`);
+        }
+
+        // If characters were suggested and user has no characters yet, auto-suggest them
+        if ((!characters || characters.length === 0) && data.suggestedCharacters?.length) {
+          setCharacters(data.suggestedCharacters.map(sc => ({
+            _id: 'temp-' + Math.random().toString(36).slice(2, 9),
+            name: sc.name,
+            role: sc.role || 'supporting',
+            physicalDescription: sc.physicalDescription || '',
+            backstory: sc.backstory || '',
+          })));
+        }
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to research and expand concept. Please try again.');
+    } finally {
+      setIsExpanding(false);
+    }
+  };
+
   // ── Step 3: Generate Screenplay ────────────────────────────────────────────
   const handleGenerate = async () => {
     setLoading(true);
@@ -1111,14 +1156,49 @@ export default function FilmStudioPage() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Script / Synopsis * <span className="label-hint">Provide your full script or a summary</span></label>
+                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                    <label className="form-label m-0">
+                      Script / Synopsis * <span className="label-hint hidden sm:inline">Provide your full script or a summary</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={isExpanding || !concept.synopsis.trim()}
+                      onClick={handleAiResearchExpand}
+                      className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="AI will research the internet and create a trending script matching your Video Type"
+                    >
+                      {isExpanding ? (
+                        <>
+                          <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin shrink-0" />
+                          <span>Researching trends for {VIDEO_TYPES.find(t => t.id === concept.videoType)?.label || 'film'}...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={13} className="text-amber-300" />
+                          <span>AI Research & Expand</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
                   <textarea
                     className="form-textarea"
                     rows={6}
                     value={concept.synopsis}
                     onChange={setConcField('synopsis')}
-                    placeholder="Describe your scene or paste your full script here. The AI will extract visuals and pacing..."
+                    placeholder="Describe your idea or paste your script here (e.g. 'a man who acts good and loves everybody'). Click 'AI Research & Expand' to craft a trending, video-type script!"
                   />
+
+                  {researchNotes && (
+                    <div className="mt-2 p-2.5 rounded-lg bg-[var(--brand-subtle)] border border-[color-mix(in_srgb,var(--brand-primary)_30%,transparent)] text-xs text-[var(--text-secondary)] flex items-start gap-2 animate-fadeIn">
+                      <Sparkles size={14} className="text-[var(--brand-light)] shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-[var(--text-primary)]">Researched & Trending: </span>
+                        <span>{researchNotes}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

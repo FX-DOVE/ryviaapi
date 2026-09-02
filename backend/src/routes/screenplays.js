@@ -4,11 +4,33 @@ import FilmCharacter from '../models/FilmCharacter.js';
 import Job from '../models/Job.js';
 import Project from '../models/Project.js';
 import { createScreenplayDraft, runScreenplayGeneration, regenerateScreenplay } from '../services/screenplayService.js';
+import { researchAndExpandConcept } from '../services/webResearchService.js';
 import { startJobPipeline } from '../services/executionEngine.js';
 import { SCREENPLAY_PIPELINE_STEPS } from '../config/constants.js';
 import { logInfo } from '../services/logService.js';
 
 const router = express.Router();
+
+// ── Research and expand a brief synopsis using internet trends & video type ────
+router.post('/research-expand', async (req, res, next) => {
+  try {
+    const { title, synopsis, videoType, genre } = req.body;
+    if (!synopsis) {
+      return res.status(400).json({ error: 'A short description or synopsis is required to expand' });
+    }
+
+    const type = videoType || genre || 'drama';
+    const result = await researchAndExpandConcept({
+      title: title || '',
+      synopsis,
+      videoType: type,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── List screenplays for workspace ────────────────────────────────────────────
 router.get('/', async (req, res, next) => {

@@ -37,6 +37,9 @@ export const screenplaysApi = {
   generate: (data) =>
     api.post(`${BASE}/screenplays/generate`, data),
 
+  researchExpand: (data) =>
+    api.post(`${BASE}/screenplays/research-expand`, data),
+
   updateScene: (id, sceneNumber, data) =>
     api.patch(`${BASE}/screenplays/${id}/scenes/${sceneNumber}`, data),
 
