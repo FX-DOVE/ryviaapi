@@ -281,6 +281,30 @@ router.post('/:id/produce', async (req, res, next) => {
       return res.status(400).json({ error: `Screenplay is not ready (status: ${screenplay.status})` });
     }
 
+    // Resolve all relevant character IDs for this production job
+    const incomingCharIds = Array.isArray(req.body?.filmCharacterIds)
+      ? req.body.filmCharacterIds.filter(id => mongoose.Types.ObjectId.isValid(id))
+      : [];
+    const screenplayCharIds = (screenplay.characters || [])
+      .map(c => c.filmCharacterId)
+      .filter(id => id && mongoose.Types.ObjectId.isValid(id));
+    
+    let projectCharIds = [];
+    if (screenplay.projectId) {
+      const pChars = await FilmCharacter.find({ projectId: screenplay.projectId }).select('_id');
+      projectCharIds = pChars.map(c => c._id);
+    }
+    if (!incomingCharIds.length && !screenplayCharIds.length && !projectCharIds.length) {
+      const wsChars = await FilmCharacter.find({ workspaceId: req.workspaceId }).select('_id');
+      projectCharIds = wsChars.map(c => c._id);
+    }
+
+    const combinedCharIds = Array.from(new Set([
+      ...incomingCharIds.map(String),
+      ...screenplayCharIds.map(String),
+      ...projectCharIds.map(String)
+    ])).map(id => new mongoose.Types.ObjectId(id));
+
     // Create the production Job
     const job = new Job({
       userId: req.userId,
@@ -295,9 +319,7 @@ router.post('/:id/produce', async (req, res, next) => {
       targetDurationMinutes: screenplay.targetDurationMinutes,
       totalScenes: screenplay.totalScenes,
       totalChapters: screenplay.totalChapters,
-      filmCharacterIds: screenplay.characters
-        .filter(c => c.filmCharacterId)
-        .map(c => c.filmCharacterId),
+      filmCharacterIds: combinedCharIds,
       styleConfig: {
         preset: screenplay.animationStyle || 'cinematic',
         camera: 'hollywood',

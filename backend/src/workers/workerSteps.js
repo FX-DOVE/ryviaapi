@@ -223,10 +223,11 @@ export async function processLockStep(jobId) {
         dbCharacters = await FilmCharacter.find({ _id: { $in: charIds } });
       }
     }
+    if (!dbCharacters.length && job.projectId) {
+      dbCharacters = await FilmCharacter.find({ projectId: job.projectId });
+    }
     if (!dbCharacters.length && job.workspaceId) {
-      const query = { workspaceId: job.workspaceId };
-      if (job.projectId) query.projectId = job.projectId;
-      dbCharacters = await FilmCharacter.find(query);
+      dbCharacters = await FilmCharacter.find({ workspaceId: job.workspaceId }).sort({ updatedAt: -1 });
     }
   } catch (err) {
     console.warn(`[WorkerSteps] Could not load DB characters: ${err.message}`);
@@ -235,14 +236,18 @@ export async function processLockStep(jobId) {
   // Generate character lock images
   const characters = [...(directorPlan.characters || [])];
 
-  // If directorPlan has no characters but DB has characters, add them
-  if (characters.length === 0 && dbCharacters.length > 0) {
-    for (const dbC of dbCharacters) {
-      characters.push({
+  // Prioritize and ensure any user-created characters from DB (especially with uploaded photos) are included
+  for (const dbC of dbCharacters) {
+    const existing = characters.find(c =>
+      (c.filmCharacterId && String(c.filmCharacterId) === String(dbC._id)) ||
+      c.name.trim().toLowerCase() === dbC.name.trim().toLowerCase()
+    );
+    if (!existing) {
+      characters.unshift({
         name: dbC.name,
-        role: dbC.role,
-        physicalDescription: dbC.physicalDescription,
-        clothingDefault: dbC.clothingDefault,
+        role: dbC.role || 'protagonist',
+        physicalDescription: dbC.physicalDescription || '',
+        clothingDefault: dbC.clothingDefault || '',
         referenceImageUrl: dbC.referenceImageUrl,
         referenceImageKey: dbC.referenceImageKey,
         avatar: dbC.avatar,
@@ -251,9 +256,15 @@ export async function processLockStep(jobId) {
     }
   }
 
-  for (let i = 0; i < characters.length; i++) {
-    const char = characters[i];
+  // ── Step 2.5: Multimodal Gemini Analysis for Characters with Reference Images ──
+  const {
+    analyzeCharacterReferenceImage,
+    synthesizeWorldContinuity,
+  } = await import('../services/characterVisionService.js');
 
+  const analyzedReferenceCharacters = [];
+
+  for (const char of characters) {
     // Merge matching DB character (match by ID, exact name, or partial name)
     const match = dbCharacters.find(c =>
       (char.filmCharacterId && String(c._id) === String(char.filmCharacterId)) ||
@@ -272,6 +283,39 @@ export async function processLockStep(jobId) {
       console.log(`[WorkerSteps] 🔗 Attached DB FilmCharacter "${match.name}" to plan character "${char.name}" (refImage: ${Boolean(char.referenceImageUrl || char.referenceImageKey)})`);
     }
 
+    const refSource = char.referenceImageUrl || char.referenceImageKey || char.referenceImagePath || char.avatar;
+    if (refSource) {
+      await logInfo(jobId, `👁️ Reasoning LLM analyzing reference photo for "${char.name}"...`);
+      try {
+        const analysis = await analyzeCharacterReferenceImage({
+          imagePathOrUrl: refSource,
+          characterName: char.name,
+          role: char.role,
+          physicalDescription: char.physicalDescription,
+          backstory: char.backstory,
+        });
+        char.visualAnalysis = analysis;
+        analyzedReferenceCharacters.push({ name: char.name, role: char.role, ...analysis });
+      } catch (err) {
+        console.warn(`[WorkerSteps] Vision analysis failed for ${char.name}:`, err.message);
+      }
+    }
+  }
+
+  // Synthesize Master World & Setting DNA from analyzed characters
+  const masterWorldDna = synthesizeWorldContinuity(analyzedReferenceCharacters);
+  if (masterWorldDna) {
+    job.visualDna = masterWorldDna;
+    await Job.findByIdAndUpdate(jobId, { visualDna: masterWorldDna });
+    await logInfo(
+      jobId,
+      `🌍 Master World & Setting DNA locked: ${masterWorldDna.country_or_region} (${masterWorldDna.socio_economic_setting}) · Lighting: ${masterWorldDna.lighting_style}`
+    );
+  }
+
+  for (let i = 0; i < characters.length; i++) {
+    const char = characters[i];
+
     // Check if lock already exists and is valid
     const existingCharLock = job.characterLocks?.[char.name];
     if (existingCharLock?.referenceImagePath && fs.existsSync(existingCharLock.referenceImagePath)) {
@@ -280,14 +324,16 @@ export async function processLockStep(jobId) {
       continue;
     }
 
-    await logInfo(jobId, `Locking character ${i + 1}/${characters.length}: ${char.name}${char.referenceImageUrl || char.referenceImageKey ? ' (📸 with uploaded reference)' : ''}`);
+    const hasRef = Boolean(char.referenceImageUrl || char.referenceImageKey || char.referenceImagePath || char.avatar);
+    await logInfo(jobId, `Locking character ${i + 1}/${characters.length}: ${char.name}${hasRef ? ' (📸 using Image-to-Image with reference)' : ' (🎨 using Text-to-Image with World DNA)'}`);
 
     try {
-      const lock = await createCharacterLock(char, animationStyle, jobId);
+      const lock = await createCharacterLock(char, animationStyle, jobId, masterWorldDna);
       characterLocks[char.name] = {
         lockPrompt: lock.lockPrompt,
         referenceImagePath: lock.referenceImagePath,
         referenceUsed: lock.referenceUsed,
+        visualAnalysis: lock.visualAnalysis,
       };
     } catch (err) {
       console.error(`[WorkerSteps] Character lock failed for "${char.name}": ${err.message}`);
@@ -341,7 +387,7 @@ export async function processLockStep(jobId) {
     await logInfo(jobId, `Locking environment ${i + 1}/${environments.length}: ${env.name}${env.referenceImageUrl || env.referenceImageKey ? ' (📸 with uploaded reference)' : ''}`);
 
     try {
-      const lock = await createEnvironmentLock(env, animationStyle, jobId);
+      const lock = await createEnvironmentLock(env, animationStyle, jobId, masterWorldDna);
       environmentLocks[envKey] = {
         lockPrompt: lock.lockPrompt,
         referenceImagePath: lock.referenceImagePath,

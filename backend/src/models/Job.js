@@ -97,6 +97,8 @@ const jobSchema = new mongoose.Schema(
     characterLocks:    { type: mongoose.Schema.Types.Mixed, default: {} },
     // Map of location ID → { lockPrompt, referenceImagePath }
     environmentLocks:  { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Master World & Setting DNA (country, setting, cinematography)
+    visualDna:         { type: mongoose.Schema.Types.Mixed, default: null },
 
     // ── Film Mode Fields ───────────────────────────────────────
     filmMode:          { type: Boolean, default: false },

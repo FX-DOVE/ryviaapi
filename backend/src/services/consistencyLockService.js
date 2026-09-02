@@ -63,29 +63,14 @@ const PHOTOREALISM_PREFIX =
   + 'Authentic natural body proportions. Natural ambient daylight, unpolished, organic, candid cinema documentary still, '
   + 'film grain, sharp focus on real skin details, unretouched. ';
 
-export async function createCharacterLock(character, animationStyle = 'cinematic', jobId = '') {
+export async function createCharacterLock(character, animationStyle = 'cinematic', jobId = '', worldDna = null) {
   const lockDir = charLockDir(jobId);
   await fs.promises.mkdir(lockDir, { recursive: true });
 
   const safeName = character.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
   const refImagePath = path.join(lockDir, `${safeName}_reference.jpg`);
 
-  // ── Photorealistic identity portrait prompt ──────────────────────────────
-  const refPrompt = [
-    PHOTOREALISM_PREFIX,
-    `${character.name}:`,
-    character.physicalDescription || '',
-    character.clothingDefault ? `Wearing: ${character.clothingDefault}` : '',
-    'Natural relaxed posture, looking directly at camera',
-    '35mm film still, natural ambient room lighting, realistic depth of field',
-    'Natural human hair texture, authentic human eyes, unretouched skin with pores and fine lines',
-    'Shot on Kodak 35mm motion picture film, subtle grain, true-to-life colors',
-  ].filter(Boolean).join('. ');
-
-  // ── If the character has a user-uploaded photo, edit it forward ──────────
-  // This is the most reliable way to preserve identity. The uploaded reference
-  // image MUST drive generation — if it fails, we surface an explicit error
-  // rather than silently falling back to text-to-image.
+  // ── If the character has a user-uploaded photo, edit it forward via Image-to-Image ──
   let uploadedRef = character.referenceImagePath   // from Film Characters UI
     || character.referenceImageUrl
     || character.avatar
@@ -113,6 +98,7 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   }
 
   let referenceUsed = false;
+  let visualAnalysis = character.visualAnalysis || null;
 
   if (uploadedRef) {
     const isHttp = typeof uploadedRef === 'string' && /^https?:\/\//i.test(uploadedRef);
@@ -124,7 +110,24 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
         + `(${isHttp ? 'URL' : 'local file'}: ${uploadedRef.slice(0, 80)})`,
       );
 
-      const editInstruction = [
+      // Perform / retrieve multimodal vision analysis from Gemini if not already analyzed
+      if (!visualAnalysis) {
+        try {
+          const { analyzeCharacterReferenceImage } = await import('./characterVisionService.js');
+          visualAnalysis = await analyzeCharacterReferenceImage({
+            imagePathOrUrl: uploadedRef,
+            characterName: character.name,
+            role: character.role,
+            physicalDescription: character.physicalDescription,
+            backstory: character.backstory,
+          });
+        } catch (visErr) {
+          console.warn(`[ConsistencyLock] Multimodal vision analysis warning for "${character.name}":`, visErr.message);
+        }
+      }
+
+      // Build edit instruction using reasoning LLM's deep visual analysis
+      const editInstruction = visualAnalysis?.edit_locking_prompt || [
         'Keep this exact person from the reference photo — identical face, facial structure, skin tone, hair, eyes, and body build.',
         'Preserve natural human skin texture with real skin pores, fine lines, subtle blemishes, and authentic human complexion.',
         'Do NOT airbrush, do NOT smooth skin, do NOT make skin look like plastic, porcelain, wax, or CGI.',
@@ -135,11 +138,7 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
 
       try {
         console.log(`[ConsistencyLock] 📸 Phase 2/4: Encoding reference image for "${character.name}" → base64...`);
-        // toImagePayload downloads remote URLs and re-encodes them as base64 data URIs
-        // so Runpod workers (which cannot reach private R2/S3 buckets) can consume them.
-        // This step is logged by toImagePayload itself — see runpodClient.js.
-
-        console.log(`[ConsistencyLock] 📸 Phase 3/4: Sending reference to Qwen-Image-Edit for "${character.name}"...`);
+        console.log(`[ConsistencyLock] 📸 Phase 3/4: Sending reference to Qwen-Image-Edit (Image-to-Image) for "${character.name}"...`);
         await images.edit([uploadedRef], editInstruction, refImagePath, {
           negative_prompt: REALISM_NEGATIVE_PROMPT,
           num_inference_steps: 50,
@@ -147,19 +146,12 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
         referenceUsed = true;
         console.log(`[ConsistencyLock] 📸 Phase 4/4: ✅ img2img complete for "${character.name}": ${refImagePath}`);
       } catch (err) {
-        // ── IMPORTANT: Do NOT silently fall back to text-to-image. ──────────
-        // A silent fallback is what causes the "random unrelated character" bug.
-        // Surface the error explicitly so the user knows to re-upload the photo.
         console.error(
           `[ConsistencyLock] ❌ Reference image FAILED for "${character.name}": ${err.message}\n`
-          + '  → This means the character will be generated from text only, which may not match the reference.\n'
-          + '  → Cause: the uploaded image could not be downloaded or encoded (expired URL, size limit, or network error).\n'
-          + '  → Fix: re-upload the reference image in the Film Characters panel and retry production.',
+          + '  → Cause: the uploaded image could not be processed by the image-to-image endpoint.\n',
         );
-        // Re-throw so the orchestrator can surface this as a job-level warning
-        // rather than silently continuing with an unrelated face.
         throw new Error(
-          `Reference image for character "${character.name}" failed to process: ${err.message}. `
+          `Reference image for character "${character.name}" failed to process via image-to-image: ${err.message}. `
           + 'Please re-upload the reference photo in the Film Characters panel and retry.',
         );
       }
@@ -172,9 +164,16 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
     }
   }
 
-  // ── Fallback: generate from text prompt (only when NO reference was uploaded) ──
+  // ── Character WITHOUT an uploaded reference image: Text-to-Image locked to World DNA ──
   if (!referenceUsed && !fs.existsSync(refImagePath)) {
-    console.log(`[ConsistencyLock] 🖼️  No reference uploaded for "${character.name}" — generating from text prompt...`);
+    console.log(`[ConsistencyLock] 🖼️  No reference uploaded for "${character.name}" — generating via Text-to-Image with World & Setting DNA...`);
+    const { buildPromptForCharacterWithoutReference } = await import('./characterVisionService.js');
+    const refPrompt = buildPromptForCharacterWithoutReference({
+      character,
+      worldDna,
+      animationStyle,
+    });
+
     try {
       await images.generate(refPrompt, refImagePath, {
         width: 1024,
@@ -182,20 +181,20 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
         negative_prompt: REALISM_NEGATIVE_PROMPT,
         num_inference_steps: 50,
       });
-      console.log(`[ConsistencyLock] ✅ Text-to-image lock created for "${character.name}": ${refImagePath}`);
+      console.log(`[ConsistencyLock] ✅ Text-to-image lock created for "${character.name}" (World DNA matched): ${refImagePath}`);
     } catch (err) {
-      // Text-to-image failure is non-fatal — text lock still provides partial consistency.
       console.error(`[ConsistencyLock] ⚠ Text-to-image failed for "${character.name}": ${err.message}`);
     }
   }
 
-  // Build the text-based lock prompt (injected into every generation)
+  // Build the text-based lock prompt (injected into every subsequent scene/keyframe)
   const lockPrompt = buildCharacterLockPrompt(character, animationStyle);
 
   return {
     lockPrompt,
     referenceImagePath: fs.existsSync(refImagePath) ? refImagePath : null,
     referenceUsed,
+    visualAnalysis,
   };
 }
 
@@ -250,9 +249,10 @@ export function buildCharacterLockPrompt(character, animationStyle = 'cinematic'
  * @param {string} environment.description
  * @param {string} animationStyle
  * @param {string} jobId
+ * @param {object} worldDna
  * @returns {Promise<{ lockPrompt: string, referenceImagePath: string }>}
  */
-export async function createEnvironmentLock(environment, animationStyle = 'cinematic', jobId = '') {
+export async function createEnvironmentLock(environment, animationStyle = 'cinematic', jobId = '', worldDna = null) {
   const lockDir = envLockDir(jobId);
   await fs.promises.mkdir(lockDir, { recursive: true });
 
@@ -302,19 +302,26 @@ export async function createEnvironmentLock(environment, animationStyle = 'cinem
     '35mm film photograph, Kodak Portra 400. Cinematic film still of this exact location.',
     environment.name ? `Location setting: ${environment.name}.` : '',
     environment.description || '',
+    worldDna ? `Located in ${worldDna.country_or_region}. Style: ${worldDna.architectural_and_environment_style}. Lighting: ${worldDna.lighting_style}.` : '',
     'Wide establishing view, realistic architectural details, authentic natural practical textures, natural ambient lighting, subtle film grain.',
     'No cartoon, no 3D CGI render, no plastic texture, no synthetic sheen, empty scene without people.',
   ].filter(Boolean).join(' ');
 
-  const refPrompt = [
-    '35mm film photograph, Kodak Portra 400, on-location cinematic film production still',
-    environment.name ? `Setting: ${environment.name}` : '',
-    environment.description || '',
-    'Wide establishing shot showing the full physical space',
-    'Realistic architecture, authentic textures, natural practical lighting, subtle film grain',
-    'No people, empty location, natural dynamic range, unretouched',
-    'Shot on 35mm motion picture film, true-to-life colors',
-  ].filter(Boolean).join('. ');
+  let refPrompt;
+  if (worldDna) {
+    const { buildEnvironmentPromptWithWorldDna } = await import('./characterVisionService.js');
+    refPrompt = buildEnvironmentPromptWithWorldDna({ environment, worldDna, animationStyle });
+  } else {
+    refPrompt = [
+      '35mm film photograph, Kodak Portra 400, on-location cinematic film production still',
+      environment.name ? `Setting: ${environment.name}` : '',
+      environment.description || '',
+      'Wide establishing shot showing the full physical space',
+      'Realistic architecture, authentic textures, natural practical lighting, subtle film grain',
+      'No people, empty location, natural dynamic range, unretouched',
+      'Shot on 35mm motion picture film, true-to-life colors',
+    ].filter(Boolean).join('. ');
+  }
 
   if (uploadedRef && (isHttp || isLocalFile)) {
     try {

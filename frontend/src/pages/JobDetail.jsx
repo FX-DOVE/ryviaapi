@@ -578,6 +578,20 @@ export default function JobDetail() {
 
             {openSections.characters && (
               <div className="p-5">
+                {job.visualDna && (
+                  <div className="mb-4 p-3.5 rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--brand-primary)_8%,var(--bg-sunken))] border border-[color-mix(in_srgb,var(--brand-primary)_25%,transparent)]">
+                    <div className="flex items-center gap-2 mb-1.5 text-xs font-semibold text-[var(--brand-light)]">
+                      <Sparkles size={14} />
+                      <span>Master World & Setting DNA (Multimodal Vision Continuity)</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[var(--text-secondary)]">
+                      <div><strong className="text-[var(--text-primary)]">Country / Region: </strong>{job.visualDna.country_or_region}</div>
+                      <div><strong className="text-[var(--text-primary)]">Atmosphere: </strong>{job.visualDna.socio_economic_setting}</div>
+                      <div><strong className="text-[var(--text-primary)]">Lighting Setup: </strong>{job.visualDna.lighting_style}</div>
+                      <div><strong className="text-[var(--text-primary)]">Cinematography: </strong>{job.visualDna.film_stock_look || job.visualDna.camera_lens_and_depth}</div>
+                    </div>
+                  </div>
+                )}
                 {characters.length === 0 ? (
                   <p className="text-xs text-[var(--text-muted)] italic py-2">
                     No characters identified yet. Once the director analyzes the script, character profiles and master lock portraits will appear here.
@@ -628,7 +642,13 @@ export default function JobDetail() {
 
                               <div className="text-[10px] text-[var(--accent-green)] flex items-center gap-1 mt-1 font-medium">
                                 <ShieldCheck size={11} />
-                                <span>{hasMasterImage ? 'Master Visual Lock Engaged' : 'Detailed Prompt Lock Active'}</span>
+                                <span>
+                                  {lock?.referenceUsed
+                                    ? '📸 Image-to-Image Lock (Visual Reference Preserved)'
+                                    : hasMasterImage
+                                    ? '🎨 Text-to-Image Lock (World DNA Synchronized)'
+                                    : 'Detailed Prompt Lock Active'}
+                                </span>
                               </div>
                             </div>
                           </div>

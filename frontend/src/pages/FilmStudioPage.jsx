@@ -1136,7 +1136,9 @@ export default function FilmStudioPage() {
     setLoading(true);
     setError('');
     try {
-      const { data } = await screenplaysApi.produce(generatedScreenplay._id);
+      const { data } = await screenplaysApi.produce(generatedScreenplay._id, {
+        filmCharacterIds: characters.map(c => c._id).filter(id => id && !String(id).startsWith('temp-') && String(id).length === 24),
+      });
       navigate(`/app/jobs/${data.jobId}`);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to start production');

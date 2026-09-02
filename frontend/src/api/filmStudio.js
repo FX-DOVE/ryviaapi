@@ -43,8 +43,8 @@ export const screenplaysApi = {
   updateScene: (id, sceneNumber, data) =>
     api.patch(`${BASE}/screenplays/${id}/scenes/${sceneNumber}`, data),
 
-  produce: (id) =>
-    api.post(`${BASE}/screenplays/${id}/produce`),
+  produce: (id, data = {}) =>
+    api.post(`${BASE}/screenplays/${id}/produce`, data),
 
   regenerate: (id) =>
     api.post(`${BASE}/screenplays/${id}/regenerate`, {}),
