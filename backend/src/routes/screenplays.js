@@ -2,6 +2,7 @@ import express from 'express';
 import Screenplay from '../models/Screenplay.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 import Job from '../models/Job.js';
+import Project from '../models/Project.js';
 import { createScreenplayDraft, runScreenplayGeneration, regenerateScreenplay } from '../services/screenplayService.js';
 import { startJobPipeline } from '../services/executionEngine.js';
 import { SCREENPLAY_PIPELINE_STEPS } from '../config/constants.js';
@@ -97,6 +98,36 @@ router.post('/generate', async (req, res, next) => {
 
     console.log(`[ScreenplayRoute] Generating screenplay for "${title}"...`);
 
+    // Auto-create a Project Studio if none was provided, ensuring every film
+    // appears in the user's Projects Studio list and can always be revisited.
+    let resolvedProjectId = projectId || null;
+    if (!resolvedProjectId && req.userId) {
+      try {
+        const autoProj = new Project({
+          name: title,
+          description: synopsis,
+          userId: req.userId,
+          workspaceId: req.workspaceId,
+          status: 'active',
+          style: {
+            preset: genre || 'cinematic',
+            camera: 'hollywood',
+            lighting: 'dusk',
+            colorGrade: 'cinematic',
+            motionLevel: 'medium',
+            emotion: tone || 'neutral',
+            musicStyle: 'cinematic',
+            customStyleNotes: ''
+          }
+        });
+        await autoProj.save();
+        resolvedProjectId = autoProj._id;
+        console.log(`[ScreenplayRoute] Auto-created Project "${title}" (${resolvedProjectId})`);
+      } catch (projErr) {
+        console.error('[ScreenplayRoute] Could not auto-create project:', projErr.message);
+      }
+    }
+
     // Create the doc in the `generating` state and return immediately. The
     // multi-stage LLM run (1-3 min) is fired detached below, so a backend restart
     // mid-generation can never strand an in-flight HTTP request — startup recovery
@@ -112,7 +143,7 @@ router.post('/generate', async (req, res, next) => {
       filmCharacterIds: filmCharacterIds || [],
       additionalSettings: additionalSettings || '',
       workspaceId: req.workspaceId,
-      projectId: projectId || null,
+      projectId: resolvedProjectId,
       createdBy: req.userId,
     });
 
@@ -125,6 +156,7 @@ router.post('/generate', async (req, res, next) => {
     res.status(202).json({
       screenplay: {
         _id: screenplay._id,
+        projectId: screenplay.projectId,
         title: screenplay.title,
         genre: screenplay.genre,
         totalScenes: screenplay.totalScenes,

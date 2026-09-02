@@ -892,6 +892,9 @@ export default function FilmStudioPage() {
         projectId: currentProjId || null,
       });
       setGeneratedScreenplay(data.screenplay);
+      if (data.screenplay?.projectId) {
+        localStorage.setItem('film_studio_project_id', data.screenplay.projectId);
+      }
       setStep(4);
     } catch (err) {
       setError(err.response?.data?.error || 'Screenplay generation failed. Please try again.');
