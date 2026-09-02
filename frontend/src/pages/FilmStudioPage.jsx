@@ -75,6 +75,10 @@ function CharacterCard({ char, onEdit, onDelete, onPreview, index }) {
   const proxyUrl = charImageUrl(char);
   const hasImg = proxyUrl && !imgErr;
 
+  useEffect(() => {
+    setImgErr(false);
+  }, [char?._id, char?.referenceImageUrl, char?.referenceImage]);
+
   return (
     <div className="char-card">
       <div

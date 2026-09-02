@@ -7,6 +7,7 @@ import {
 import { upload } from '../middleware/upload.js';
 import { uploadToCloud, getSignedUrl } from '../services/storageService.js';
 import fs from 'fs';
+import path from 'path';
 import axios from 'axios';
 import mongoose from 'mongoose';
 
@@ -43,28 +44,57 @@ router.get('/:id', async (req, res, next) => {
 
 // ── Stream character reference image (avoids expired signed URLs) ─────────────
 // The frontend always requests this proxy URL instead of the raw R2 presigned URL.
-// We re-generate a fresh signed URL from the stored cloud key on every request.
+// We stream from disk if cached locally, or refresh/stream from cloud storage.
 router.get('/:id/reference-image', async (req, res, next) => {
   try {
-    const character = await FilmCharacter.findOne({ _id: req.params.id, workspaceId: req.workspaceId });
+    // Media <img> tags do not carry workspace auth headers, so look up by global _id
+    const character = await FilmCharacter.findById(req.params.id);
     if (!character) return res.status(404).json({ error: 'Character not found' });
 
-    // Get a fresh signed URL or use the stored one
+    // 1. If stored locally in mock-storage on disk, stream directly
+    if (character.referenceImageKey) {
+      const localDiskPath = path.join(process.cwd(), 'storage', 'public', 'mock-storage', character.referenceImageKey);
+      if (fs.existsSync(localDiskPath)) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return fs.createReadStream(localDiskPath).pipe(res);
+      }
+    }
+
+    // 2. Refresh signed URL from cloud key if available
     let imageUrl = character.referenceImageUrl;
     if (character.referenceImageKey && typeof getSignedUrl === 'function') {
       try {
-        imageUrl = await getSignedUrl(character.referenceImageKey, 3600);
-      } catch { /* fall through to stored url */ }
+        const fresh = await getSignedUrl(character.referenceImageKey, 86400);
+        if (fresh && fresh.startsWith('http')) {
+          imageUrl = fresh;
+        }
+      } catch { /* fall back to stored url */ }
     }
 
     if (!imageUrl) return res.status(404).json({ error: 'No reference image' });
 
-    // Stream the image through our server to avoid CORS / expiry issues
-    const response = await axios.get(imageUrl, { responseType: 'stream', timeout: 30000 });
-    const contentType = response.headers['content-type'] || 'image/jpeg';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    response.data.pipe(res);
+    // 3. If it's a local relative path, stream from disk
+    if (imageUrl.startsWith('/mock-storage') || imageUrl.startsWith('mock-storage')) {
+      const rel = imageUrl.replace(/^\/?mock-storage\//, '');
+      const localPath = path.join(process.cwd(), 'storage', 'public', 'mock-storage', rel);
+      if (fs.existsSync(localPath)) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return fs.createReadStream(localPath).pipe(res);
+      }
+    }
+
+    // 4. If remote URL (Cloudflare R2, AWS S3), stream via axios
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      const response = await axios.get(imageUrl, { responseType: 'stream', timeout: 30000 });
+      const contentType = response.headers['content-type'] || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return response.data.pipe(res);
+    }
+
+    res.status(404).json({ error: 'Reference image could not be loaded' });
   } catch (err) { next(err); }
 });
 
