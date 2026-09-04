@@ -61,7 +61,7 @@ export function AuthLayout({ children, title, subtitle }) {
       </div>
 
       {/* RIGHT PANEL - Form */}
-      <div className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 relative z-10 bg-[var(--bg-base)]">
+      <div className="auth-form-panel flex-1 flex flex-col justify-center items-center relative z-10 bg-[var(--bg-base)]">
         <div className="w-full max-w-[420px] animation-page-enter">
 
           {/* Mobile Logo */}

@@ -17,7 +17,7 @@ export default function BottomNav() {
           to={to}
           className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
         >
-          <Icon size={20} />
+          <Icon size={20} strokeWidth={2.25} aria-hidden="true" />
           <span>{label}</span>
         </NavLink>
       ))}

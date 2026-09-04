@@ -511,9 +511,9 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
         </div>
       </div>
 
-      <div className="step-footer">
-        <button className="btn-secondary" onClick={onRegenerate}>← Regenerate</button>
-        <button className="btn-produce btn-lg" onClick={onProduce} disabled={loading}>
+      <div className="step-footer step-footer--sticky">
+        <button type="button" className="btn btn-secondary" onClick={onRegenerate}>← Regenerate</button>
+        <button type="button" className="btn btn-produce btn-lg" onClick={onProduce} disabled={loading}>
           {loading ? 'Starting Production…' : <><Clapperboard size={16} className="inline mr-1"/> Start Film Production</>}
         </button>
       </div>
@@ -1227,29 +1227,27 @@ export default function FilmStudioPage() {
       {/* Header */}
       <div className="film-studio-header">
         <div className="film-studio-header-content">
-          {/* Top Bar: Title + Project Badge + Switch Button */}
-          <div className="flex items-center justify-between w-full min-w-0">
-            <div className="flex items-center gap-2.5 min-w-0">
+          <div className="film-studio-title-row">
+            <div className="film-studio-title-group">
               <div className="film-studio-icon hidden sm:flex shrink-0">
-                <Clapperboard size={22}/>
+                <Clapperboard size={22} />
               </div>
               <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-base sm:text-lg md:text-xl font-bold text-[var(--text-primary)] m-0 shrink-0">
-                  Film Studio
-                </h1>
+                <h1 className="film-studio-title">Film Studio</h1>
                 {activeProject && (
-                  <span className="px-2 py-0.5 rounded-full bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border border-[color-mix(in_srgb,var(--accent-green)_30%,transparent)] text-[var(--accent-green)] text-[10px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1 max-w-[110px] sm:max-w-[160px] shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--accent-green)] animate-pulse" />
-                    <span className="truncate">{activeProject.name}</span>
+                  <span className="film-studio-project-badge" title={activeProject.name}>
+                    <span className="film-studio-project-dot" aria-hidden="true" />
+                    <span>{activeProject.name}</span>
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            <div className="film-studio-header-actions">
               <button
+                type="button"
                 onClick={handleStartNewFilm}
-                className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-dark)] text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 shadow-sm"
+                className="film-studio-action-btn film-studio-action-btn--primary"
                 title="Start a new film"
               >
                 <Plus size={13} />
@@ -1258,8 +1256,9 @@ export default function FilmStudioPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => navigate('/app/projects')}
-                className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--glass-border)] text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-overlay)] hover:text-[var(--text-primary)] transition-all flex items-center gap-1.5 shrink-0"
+                className="film-studio-action-btn film-studio-action-btn--ghost"
               >
                 <Folder size={13} />
                 <span className="hidden sm:inline">Switch Studio</span>
@@ -1268,13 +1267,11 @@ export default function FilmStudioPage() {
             </div>
           </div>
 
-          {/* Desktop Subtitle */}
-          <p className="hidden md:block text-xs text-[var(--text-secondary)] m-0 mt-1">
+          <p className="film-studio-subtitle">
             Generate feature-length AI films from your imagination
           </p>
 
-          {/* Step Indicator (desktop & mobile) */}
-          <div className="w-full md:w-auto md:ml-auto mt-2 md:mt-0">
+          <div className="film-studio-steps">
             <StepIndicator step={step} current={step} />
           </div>
         </div>
@@ -1291,7 +1288,7 @@ export default function FilmStudioPage() {
         {/* ── STEP 1: Film Concept ── */}
         {step === 1 && (
           <div className="film-step-panel film-step-panel-inner">
-            <div className="step-panel-header mb-8">
+            <div className="step-panel-header">
               <h2 className="flex items-center gap-2"><Settings size={20} className="text-[var(--text-muted)]"/> Project Configuration</h2>
               <p className="text-[var(--text-secondary)]">Define your project requirements, style, and scope.</p>
             </div>
@@ -1343,8 +1340,8 @@ export default function FilmStudioPage() {
                 </div>
 
                 <div className="form-group">
-                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                    <label className="form-label m-0">
+                  <div className="film-ai-expand-row">
+                    <label className="form-label">
                       Script / Synopsis * <span className="label-hint hidden sm:inline">Provide your full script or a summary</span>
                     </label>
 
@@ -1352,13 +1349,13 @@ export default function FilmStudioPage() {
                       type="button"
                       disabled={isExpanding || !concept.synopsis.trim()}
                       onClick={handleAiResearchExpand}
-                      className="px-3 py-1 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="film-ai-expand-btn"
                       title="AI will research the internet and create a trending script matching your Video Type"
                     >
                       {isExpanding ? (
                         <>
                           <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin shrink-0" />
-                          <span>Researching trends for {VIDEO_TYPES.find(t => t.id === concept.videoType)?.label || 'film'}...</span>
+                          <span>Researching…</span>
                         </>
                       ) : (
                         <>
@@ -1506,12 +1503,13 @@ export default function FilmStudioPage() {
               </div>
             </div>
 
-            <div className="step-footer mt-12 pt-6 border-t border-[var(--border-default)] flex justify-between items-center">
-              <div className="step-info text-[var(--text-secondary)]">
+            <div className="step-footer step-footer--sticky">
+              <div className="step-info">
                 <span><strong>{VIDEO_TYPES.find(t => t.id === concept.videoType)?.label}</strong> · {concept.aspectRatio}</span>
               </div>
               <button
-                className="btn btn-primary px-8 min-h-[48px] text-[1.1rem]"
+                type="button"
+                className="btn btn-primary btn-lg"
                 disabled={!step1Valid || loading}
                 onClick={handleProceedToCharacters}
               >
@@ -1557,9 +1555,9 @@ export default function FilmStudioPage() {
               </div>
             )}
 
-            <div className="step-footer">
-              <button className="btn-secondary" onClick={() => setStep(1)}>← Back</button>
-              <button className="btn-primary btn-lg" onClick={() => setStep(3)}>
+            <div className="step-footer step-footer--sticky">
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>← Back</button>
+              <button type="button" className="btn btn-primary btn-lg" onClick={() => setStep(3)}>
                 Next: Generate Screenplay →
               </button>
             </div>
@@ -1617,9 +1615,9 @@ export default function FilmStudioPage() {
               </div>
             )}
 
-            <div className="step-footer">
-              <button className="btn-secondary" onClick={() => setStep(2)} disabled={loading}>← Back</button>
-              <button className="btn-primary btn-lg btn-generate" onClick={handleGenerate} disabled={loading}>
+            <div className="step-footer step-footer--sticky">
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(2)} disabled={loading}>← Back</button>
+              <button type="button" className="btn btn-primary btn-lg btn-generate" onClick={handleGenerate} disabled={loading}>
                 {loading ? 'Generating…' : 'Generate Full Screenplay'}
               </button>
             </div>
@@ -1633,7 +1631,7 @@ export default function FilmStudioPage() {
               <h2>⏳ Loading Screenplay...</h2>
               <p>Fetching your generated screenplay from the production queue.</p>
             </div>
-            <div className="step-footer mt-4">
+            <div className="step-footer step-footer--sticky">
               <button className="btn-secondary" onClick={() => setStep(3)}>← Go Back to Generate</button>
             </div>
           </div>
@@ -1654,7 +1652,7 @@ export default function FilmStudioPage() {
                 {generatedScreenplay.generationError || error}
               </div>
             )}
-            <div className="step-footer mt-4">
+            <div className="step-footer step-footer--sticky">
               <button className="btn-secondary" onClick={() => setStep(3)} disabled={loading}>← Back to Settings</button>
               <button className="btn-produce btn-lg" onClick={handleRegenerate} disabled={loading}>
                 {loading ? 'Retrying…' : <><AlertTriangle size={14} className="inline mr-1"/> Retry Generation</>}
@@ -1708,8 +1706,8 @@ export default function FilmStudioPage() {
               </div>
             </div>
 
-            <div className="step-footer">
-              <button className="btn-secondary" onClick={() => setStep(3)}>← Back</button>
+            <div className="step-footer step-footer--sticky">
+              <button type="button" className="btn btn-secondary" onClick={() => setStep(3)}>← Back</button>
             </div>
           </div>
         )}
@@ -1746,7 +1744,7 @@ export default function FilmStudioPage() {
                   `Screenplay status: ${generatedScreenplay.status}. Please try regenerating.`}
               </p>
             </div>
-            <div className="step-footer mt-4">
+            <div className="step-footer step-footer--sticky">
               <button className="btn-secondary" onClick={() => setStep(3)}>← Back to Generate</button>
               {!['in_production','completed'].includes(generatedScreenplay.status) && (
                 <button className="btn-produce btn-lg" onClick={handleRegenerate} disabled={loading}>
