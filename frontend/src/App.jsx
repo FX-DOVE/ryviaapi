@@ -6,6 +6,8 @@ import JobDetail  from './pages/JobDetail';
 
 import Login      from './pages/Login';
 import Register   from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Billing    from './pages/Billing';
 import Admin      from './pages/Admin';
 import ProjectsPage from './pages/ProjectsPage';
@@ -127,6 +129,8 @@ function AppRoutes() {
       {/* Auth */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Protected app */}
       <Route path="/app" element={<ProtectedRoute><Layout /></ProtectedRoute>}>

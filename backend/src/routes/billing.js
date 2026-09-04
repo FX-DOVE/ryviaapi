@@ -6,6 +6,7 @@ import {
   initializeTopup,
   verifyTopup,
   getJobCostPublic,
+  redeemCoupon,
 } from '../controllers/billingController.js';
 
 const router = Router();
@@ -17,5 +18,6 @@ router.post('/initialize', initializeTopup);
 router.get('/verify', verifyTopup);
 router.post('/verify', verifyTopup);
 router.get('/jobs/:id/cost', getJobCostPublic);
+router.post('/coupons/redeem', redeemCoupon);
 
 export default router;

@@ -9,6 +9,8 @@ const userSchema = new mongoose.Schema(
     role:        { type: String, enum: ['user', 'admin'], default: 'user' },
     activeWorkspaceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Workspace', default: null },
     refreshTokens: [{ type: String }],
+    resetPasswordToken:   { type: String, default: null, index: true },
+    resetPasswordExpires: { type: Date, default: null },
     storageUsed: { type: Number, default: 0 },   // bytes
     totalJobs:   { type: Number, default: 0 },
   },

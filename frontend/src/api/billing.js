@@ -6,6 +6,7 @@ export const estimateProduction = (data) => api.post('/billing/estimate', data);
 export const initializeTopup = (data) => api.post('/billing/initialize', data);
 export const verifyTopup = (reference) => api.get('/billing/verify', { params: { reference } });
 export const getJobCost = (id) => api.get(`/billing/jobs/${id}/cost`);
+export const redeemCoupon = (code) => api.post('/billing/coupons/redeem', { code });
 
 export function formatUsd(amount) {
   const n = Number(amount) || 0;

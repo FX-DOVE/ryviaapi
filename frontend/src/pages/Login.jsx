@@ -68,8 +68,7 @@ export default function Login() {
 
         <div className="relative">
           <div className="absolute right-0 top-0">
-          {/* Forgot password: UI placeholder only — backend not yet implemented */}
-          <a href="#" className="text-xs font-medium text-[var(--brand-light)] hover:text-[var(--text-primary)] transition-colors mt-1 block" onClick={(e) => e.preventDefault()} title="Coming soon">Forgot password?</a>
+          <Link to="/forgot-password" className="text-xs font-medium text-[var(--brand-light)] hover:text-[var(--text-primary)] transition-colors mt-1 block">Forgot password?</Link>
           </div>
           <AppInput
             label="Password"

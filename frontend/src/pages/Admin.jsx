@@ -6,7 +6,8 @@ import { AppButton } from '../components/ui/AppButton';
 import {
   Server, Activity, Layers, UserPlus, Lock, ArrowUpRight,
   Cpu, Thermometer, MemoryStick, Clock, CreditCard,
-  Brain, Film, Image, Zap, Terminal, Key, Loader, XCircle, RefreshCw
+  Brain, Film, Image, Zap, Terminal, Key, Loader, XCircle, RefreshCw,
+  Mail, Ticket, Gift
 } from 'lucide-react';
 
 /**
@@ -114,6 +115,19 @@ export default function Admin({ defaultTab = 'overview' }) {
   const [promoting, setPromoting] = useState(false);
   const [promoteMessage, setPromoteMessage] = useState(null);
 
+  const [couponsList, setCouponsList] = useState([]);
+  const [couponForm, setCouponForm] = useState({ code: '', fixedCreditUsd: '25', percentOff: '', maxRedemptions: '', expiresAt: '' });
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponMsg, setCouponMsg] = useState(null);
+
+  const [grantForm, setGrantForm] = useState({ email: '', amountUsd: '10', reason: 'Admin grant', allUsers: false });
+  const [grantBusy, setGrantBusy] = useState(false);
+  const [grantMsg, setGrantMsg] = useState(null);
+
+  const [bulkForm, setBulkForm] = useState({ subject: '', text: '' });
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState(null);
+
   const fetchRegistry = async (isFirstLoad = false) => {
     if (isFirstLoad) setLoading(true);
     const safeJson = async (res) => {
@@ -160,22 +174,24 @@ export default function Admin({ defaultTab = 'overview' }) {
         return;
       }
 
-      const [resWorkers, resQueues, resLedger, resStats, resProviders, resUsers] = await Promise.all([
+      const [resWorkers, resQueues, resLedger, resStats, resProviders, resUsers, resCoupons] = await Promise.all([
         fetch('/api/system/health', { headers }).catch(() => null),
         fetch('/api/system/metrics', { headers }).catch(() => null),
         fetch('/api/system/ledger', { headers }).catch(() => null),
         fetch('/api/system/stats', { headers }).catch(() => null),
         fetch('/api/providers/status', { headers }).catch(() => null),
         fetch('/api/system/users', { headers }).catch(() => null),
+        fetch('/api/system/coupons', { headers }).catch(() => null),
       ]);
 
-      const [dataWorkers, dataQueues, dataLedger, dataStats, dataProviders, dataUsers] = await Promise.all([
+      const [dataWorkers, dataQueues, dataLedger, dataStats, dataProviders, dataUsers, dataCoupons] = await Promise.all([
         safeJson(resWorkers),
         safeJson(resQueues),
         safeJson(resLedger),
         safeJson(resStats),
         safeJson(resProviders),
         safeJson(resUsers),
+        safeJson(resCoupons),
       ]);
 
       if (dataWorkers?.workers) setWorkers(dataWorkers.workers);
@@ -191,6 +207,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       }
       if (dataProviders?.providers) setAiProviders(dataProviders.providers);
       if (dataUsers?.users) setUsersList(dataUsers.users);
+      if (dataCoupons?.coupons) setCouponsList(dataCoupons.coupons);
 
       setError(null);
     } catch (err) {
@@ -282,6 +299,95 @@ export default function Admin({ defaultTab = 'overview' }) {
     }
   };
 
+  const authHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+  });
+
+  const handleCreateCoupon = async (e) => {
+    e.preventDefault();
+    setCouponBusy(true);
+    setCouponMsg(null);
+    try {
+      const body = {
+        code: couponForm.code,
+        maxRedemptions: couponForm.maxRedemptions ? Number(couponForm.maxRedemptions) : undefined,
+        expiresAt: couponForm.expiresAt || undefined,
+      };
+      if (couponForm.percentOff) body.percentOff = Number(couponForm.percentOff);
+      else body.fixedCreditUsd = Number(couponForm.fixedCreditUsd || 0);
+      const res = await fetch('/api/system/coupons', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create coupon');
+      setCouponMsg({ type: 'success', text: `Created coupon ${data.coupon?.code}` });
+      setCouponForm({ code: '', fixedCreditUsd: '25', percentOff: '', maxRedemptions: '', expiresAt: '' });
+      await fetchRegistry(false);
+    } catch (err) {
+      setCouponMsg({ type: 'error', text: err.message });
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const handleDisableCoupon = async (id) => {
+    setCouponBusy(true);
+    try {
+      const res = await fetch(`/api/system/coupons/${id}/disable`, { method: 'POST', headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to disable coupon');
+      setCouponMsg({ type: 'success', text: 'Coupon disabled' });
+      await fetchRegistry(false);
+    } catch (err) {
+      setCouponMsg({ type: 'error', text: err.message });
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+
+  const handleGrantCredits = async (e) => {
+    e.preventDefault();
+    setGrantBusy(true);
+    setGrantMsg(null);
+    try {
+      const body = {
+        amountUsd: Number(grantForm.amountUsd),
+        reason: grantForm.reason,
+        allUsers: !!grantForm.allUsers,
+      };
+      if (!grantForm.allUsers) body.email = grantForm.email;
+      const res = await fetch('/api/system/credits/grant', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Grant failed');
+      setGrantMsg({ type: 'success', text: `Granted $${data.grantedUsd} to ${data.count} user(s)` });
+      await fetchRegistry(false);
+    } catch (err) {
+      setGrantMsg({ type: 'error', text: err.message });
+    } finally {
+      setGrantBusy(false);
+    }
+  };
+
+  const handleBulkEmail = async (e) => {
+    e.preventDefault();
+    setBulkBusy(true);
+    setBulkMsg(null);
+    try {
+      const res = await fetch('/api/system/email/bulk', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ subject: bulkForm.subject, text: bulkForm.text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Bulk email failed');
+      setBulkMsg({ type: 'success', text: `Queued to ${data.recipients} users (${data.sent} sent, ${data.skipped} skipped)` });
+      setBulkForm({ subject: '', text: '' });
+    } catch (err) {
+      setBulkMsg({ type: 'error', text: err.message });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <AppPage>
@@ -355,6 +461,15 @@ export default function Admin({ defaultTab = 'overview' }) {
               onClick={() => setActiveTab('ai-connections')}
             >
               AI Connections
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className="segmented-option"
+              aria-pressed={activeTab === 'studio-ops'}
+              onClick={() => setActiveTab('studio-ops')}
+            >
+              Studio Ops
             </button>
           </div>
         }

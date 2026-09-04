@@ -308,6 +308,68 @@ export async function getJobCostPublic(req, res, next) {
   }
 }
 
+
+export async function redeemCoupon(req, res, next) {
+  try {
+    const code = String(req.body?.code || '').trim().toUpperCase();
+    if (!code) return res.status(400).json({ error: 'Coupon code is required' });
+
+    const Coupon = (await import('../models/Coupon.js')).default;
+    const coupon = await Coupon.findOne({ code });
+    if (!coupon) return res.status(404).json({ error: 'Coupon not found' });
+
+    const check = coupon.isRedeemable();
+    if (!check.ok) return res.status(400).json({ error: check.error });
+
+    const already = (coupon.redemptions || []).some(
+      (r) => String(r.userId) === String(req.user._id) || String(r.workspaceId) === String(req.workspaceId),
+    );
+    if (already) {
+      return res.status(400).json({ error: 'You have already redeemed this coupon' });
+    }
+
+    let creditCents = 0;
+    if (coupon.fixedCreditCents && coupon.fixedCreditCents > 0) {
+      creditCents = Math.round(coupon.fixedCreditCents);
+    } else if (coupon.percentOff && coupon.percentOff > 0) {
+      // percentOff grants that percent of a $100 reference pack as wallet credit
+      creditCents = Math.round((coupon.percentOff / 100) * 100 * 100);
+    }
+    if (creditCents <= 0) {
+      return res.status(400).json({ error: 'Coupon has no credit value' });
+    }
+
+    await recordTransaction({
+      workspaceId: req.workspaceId,
+      userId: req.user._id,
+      type: 'addition',
+      credits: creditCents,
+      reason: `Coupon redeemed: ${coupon.code}`,
+      adminNotes: `coupon:${coupon._id}`,
+    });
+
+    coupon.redeemedCount = (coupon.redeemedCount || 0) + 1;
+    coupon.redemptions = coupon.redemptions || [];
+    coupon.redemptions.push({
+      userId: req.user._id,
+      workspaceId: req.workspaceId,
+      creditCents,
+      redeemedAt: new Date(),
+    });
+    await coupon.save();
+
+    const wallet = await getWallet(req.workspaceId);
+    res.json({
+      success: true,
+      creditUsd: roundUsd(creditCents / 100),
+      balanceUsd: wallet.balanceUsd,
+      code: coupon.code,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export default {
   getWalletSummary,
   getLedger,
@@ -316,4 +378,5 @@ export default {
   verifyTopup,
   paystackWebhook,
   getJobCostPublic,
+  redeemCoupon,
 };
