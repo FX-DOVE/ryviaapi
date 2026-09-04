@@ -116,7 +116,7 @@ export default function Billing() {
   };
 
   const customValue = Number(customCredit);
-  const customCharge = Number.isFinite(customValue) ? customValue * 2 : 0;
+  const customCharge = Number.isFinite(customValue) ? customValue : 0;
 
   return (
     <AppPage>
@@ -169,11 +169,6 @@ export default function Billing() {
                   {formatUsd(p.chargeUsd)}
                 </span>
               </div>
-              <div className="billing-credit-pill">
-                <span className="text-[var(--brand-light)] font-bold text-base">
-                  You receive {formatUsd(p.creditUsd)}
-                </span>
-              </div>
             </div>
             <AppButton
               onClick={() => startPay({ packageId: p.id })}
@@ -189,7 +184,7 @@ export default function Billing() {
 
       <AppCard className="custom-topup">
         <h3 className="card-title mb-2">Custom amount</h3>
-        <p className="body-text text-sm mb-4">Enter the studio balance you want to add.</p>
+        <p className="body-text text-sm mb-4">Enter how much to add to your studio wallet.</p>
         <div className="custom-topup-row">
           <AppInput
             label="Balance to add (USD)"

@@ -33,7 +33,7 @@ const paymentSchema = new mongoose.Schema(
     },
     /** Amount the user is charged, USD. */
     chargeUsd: { type: Number, required: true },
-    /** Studio balance credited on success, USD (50% of charge). */
+    /** Studio balance credited on success, USD (1:1 with charge). */
     creditUsd: { type: Number, required: true },
     currency: { type: String, default: 'NGN' },
     providerAmount: { type: Number, default: 0 },

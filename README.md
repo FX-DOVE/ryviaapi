@@ -474,8 +474,8 @@ For long-form drama, movie, and anime jobs on a VPS:
 ### 5b. Billing, wallet & email
 
 - **No free credits on register** — new workspaces start at `$0`. Studio balance is funded via Paystack top-ups or admin/coupon grants.
-- **Top-up credit ratio** — users pay 2× the wallet credit they receive (`TOPUP_CREDIT_RATIO=0.5` in `backend/src/config/billing.js`). Example: pay $50 → receive $25 studio balance.
-- **Job markup** — completed jobs bill infrastructure cost × `1.25` (`JOB_MARKUP_RATE=0.25`). Markup is never exposed in public cost APIs.
+- **Top-up** — deposits credit 1:1 (`TOPUP_CREDIT_RATIO=1` in `backend/src/config/billing.js`). Example: pay $100 → $100 studio balance.
+- **Job billing** — completed jobs bill `(infra × 1.25) × 2` (`JOB_MARKUP_RATE=0.25`, `JOB_BILLING_MULTIPLIER=2`). Markup and multiplier are never exposed in public cost APIs or wallet UI.
 - **Coupons** — admins create codes under `/api/system/coupons`; users redeem via `POST /api/billing/coupons/redeem`.
 - **Email** — set `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASS` / `EMAIL_FROM` / `APP_URL` in `.env`. When `EMAIL_HOST` is unset, mail is skipped safely (welcome, password reset, video ready, admin bulk).
 
