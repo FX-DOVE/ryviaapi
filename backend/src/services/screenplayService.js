@@ -28,6 +28,32 @@ const SCENES_PER_MINUTE = 3;  // ~20-second conceptual scenes; director subdivid
 const MAX_GENERATION_ATTEMPTS = 5;  // startup recovery gives up after this many tries
 
 /**
+ * Strip junk tokens that sometimes leak from E2E/test titles into cast names
+ * (e.g. "Mtn1axeh (\"Mina\")" → "Mina"). Keeps human names intact.
+ */
+function sanitizeCharacterName(raw, fallback = 'Character') {
+  let name = String(raw || '').trim();
+  if (!name) return fallback;
+  // Prefer a quoted display name if present: Mtn1axeh ("Mina") → Mina
+  const quoted = name.match(/["“]([^"”]+)["”]/);
+  if (quoted?.[1]?.trim()) name = quoted[1].trim();
+  // Drop bare duration/job-ish tokens like mtn1axeh, mtn0f4nj
+  if (/^mtn[0-9a-z]+$/i.test(name.replace(/\s+/g, ''))) return fallback;
+  name = name.replace(/^mtn[0-9a-z]+\s*/i, '').trim();
+  name = name.replace(/^["'(]+|[)"']+$/g, '').trim();
+  return name || fallback;
+}
+
+function sanitizeCastList(characters = []) {
+  return (characters || []).map((c, i) => {
+    const role = c.role || 'supporting';
+    const fallback = role === 'protagonist' ? 'Protagonist' : role === 'antagonist' ? 'Antagonist' : `Character ${i + 1}`;
+    return { ...c, name: sanitizeCharacterName(c.name, fallback) };
+  });
+}
+
+
+/**
  * Best-effort push of a generation milestone to the screenplay's workspace room.
  * Never allowed to break generation if the socket layer is unavailable.
  */
@@ -56,6 +82,7 @@ CRITICAL QUALITY STANDARDS:
 - Character arcs must show SPECIFIC emotional/moral transformation
 - The story must have CAUSE AND EFFECT — each act's events must directly cause the next act's crisis
 - Dialogue moments and key reveals must be planned into the act structure
+- Character names must be natural human (or in-world) names — NEVER copy title codes, job ids, or tokens like "mtn1axeh" into a character name
 - The synopsis provided by the user is the CORE STORY — expand it faithfully with trending cultural and cinematic depth
 ${videoTypeGuidelines ? `\nCRITICAL FORMAT DIRECTIVES FOR ${String(genre).toUpperCase()}:\n${videoTypeGuidelines}\n` : ''}
 ${getDirectorBible(genre)}
@@ -208,6 +235,7 @@ STORY QUALITY RULES (CRITICAL — violating these produces unwatchable films):
 4. CAUSE AND EFFECT: Actions have consequences. If a character discovers a secret in Scene 10, their behavior MUST change in Scene 11+.
 5. DIALOGUE DRIVES PLOT: In drama, the most powerful moments are conversations. Write dialogue that reveals secrets, makes accusations, confesses truths, or forces decisions.
 6. CHARACTER CONSISTENCY: Each character has a distinct voice. A grandmother speaks differently from a young wife. Maintain their speech patterns.
+   Speakers in dialogue MUST be exact cast names (or a clear short form of them). Never invent speakers outside the cast list.
 7. EMOTIONAL ESCALATION: Within each act, tension should build progressively, not stay flat or randomly spike.
 8. NO REPETITION: Never have two scenes that make the same point. Each scene must add NEW information.
 9. SPECIFIC REFERENCES: Dialogue should reference specific events, names, places from the story — not vague generalities.
@@ -440,20 +468,22 @@ export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {})
 
       // Auto-populate characters if user left cast empty
       if ((!screenplay.characters || screenplay.characters.length === 0) && research.suggestedCharacters?.length) {
-        screenplay.characters = research.suggestedCharacters.map(c => ({
+        screenplay.characters = sanitizeCastList(research.suggestedCharacters.map(c => ({
           name: c.name,
           role: c.role || 'supporting',
           age: c.age || 30,
           physicalDescription: c.physicalDescription || '',
           backstory: c.backstory || '',
           arc: '',
-        }));
+        })));
       }
 
       await screenplay.save();
     } catch (researchErr) {
       console.warn('[ScreenplayService] Stage 0 research warning, proceeding with existing concept:', researchErr.message);
     }
+
+    screenplay.characters = sanitizeCastList(screenplay.characters || []);
 
     // ── Stage 1: Story Bible ──────────────────────────────────────
     console.log(`[ScreenplayService] Stage 1: Generating story bible...`);
