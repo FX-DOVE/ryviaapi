@@ -4811,3 +4811,25 @@ input[type='file']::file-selector-button:hover {
     padding-top: 0;
   }
 }
+
+/* ─── ADMIN TABS (mobile-first) ──────────────────────────────── */
+.admin-tabs.segmented {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.admin-tabs .segmented-option {
+  flex: 0 0 auto;
+}
+@media (max-width: 768px) {
+  .admin-tabs.segmented {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .admin-tabs .segmented-option {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+}
