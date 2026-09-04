@@ -78,6 +78,12 @@ const sceneSchema = new mongoose.Schema(
     // Characters in this scene
     characterNames: [{ type: String }],
 
+    // Description→film beauty pack (from Screenplay scenes)
+    enrichedVisual: { type: String, default: '' },
+    beautyNotes:    { type: String, default: '' },
+    motifRefs:      [{ type: String }],
+    isColdOpen:     { type: Boolean, default: false },
+
     // ── Beats (8-second segment plans from Cinematic Director) ──
     beats:         [beatSchema],
     totalSegments: { type: Number, default: 0 },

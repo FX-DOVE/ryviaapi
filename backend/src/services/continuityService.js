@@ -59,6 +59,22 @@ export async function extractContinuityPrompt(projectId, sceneContext = {}) {
     prompt += '\n';
   }
 
+  if (bible.lookBible && (bible.lookBible.colorGrade || bible.lookBible.lightingRecipe)) {
+    prompt += '### LOOK BIBLE\n';
+    if (bible.lookBible.colorGrade) prompt += '- Color grade: ' + bible.lookBible.colorGrade + '\n';
+    if (bible.lookBible.lensLanguage) prompt += '- Lens language: ' + bible.lookBible.lensLanguage + '\n';
+    if (bible.lookBible.lightingRecipe) prompt += '- Lighting: ' + bible.lookBible.lightingRecipe + '\n';
+    if (bible.lookBible.filmStock) prompt += '- Film stock: ' + bible.lookBible.filmStock + '\n';
+    if (bible.lookBible.animationStyleNotes) prompt += '- Style: ' + bible.lookBible.animationStyleNotes + '\n';
+    prompt += '\n';
+  }
+
+  if (bible.motifs && bible.motifs.length) {
+    prompt += '### VISUAL MOTIFS\n';
+    bible.motifs.forEach((m) => { prompt += '- ' + m + '\n'; });
+    prompt += '\n';
+  }
+
   prompt += '### SPATIAL & MOVEMENT RULES\n';
   prompt += '- Respect the 180-degree rule. Do not flip character screen directions randomly.\n';
   prompt += '- If Character A looks screen-right at B, Character B must look screen-left at A.\n';
@@ -125,11 +141,26 @@ export async function updateContinuityState(projectId, directorSceneData) {
  * Seed / refresh ContinuityBible from a director plan so wardrobe, locations,
  * accessories and character state are available to every prompt compile path.
  */
-export async function seedContinuityFromDirectorPlan(projectId, directorPlan, screenplayId = null) {
+export async function seedContinuityFromDirectorPlan(projectId, directorPlan, screenplayId = null, pack = {}) {
   if (!projectId || !directorPlan) return null;
 
   const bible = await getContinuityState(projectId);
   if (screenplayId) bible.screenplayId = screenplayId;
+
+  const lookBible = pack.lookBible || directorPlan.lookBible;
+  if (lookBible && typeof lookBible === 'object') {
+    bible.lookBible = {
+      colorGrade: lookBible.colorGrade || bible.lookBible?.colorGrade || '',
+      lensLanguage: lookBible.lensLanguage || bible.lookBible?.lensLanguage || '',
+      lightingRecipe: lookBible.lightingRecipe || bible.lookBible?.lightingRecipe || '',
+      filmStock: lookBible.filmStock || bible.lookBible?.filmStock || '',
+      animationStyleNotes: lookBible.animationStyleNotes || bible.lookBible?.animationStyleNotes || '',
+    };
+  }
+  const motifs = pack.motifs || directorPlan.motifs || [];
+  if (Array.isArray(motifs) && motifs.length) {
+    bible.motifs = motifs.slice(0, 5).map(String);
+  }
 
   // Characters + default wardrobe / accessories from plan
   for (const char of directorPlan.characters || []) {
@@ -228,6 +259,8 @@ export async function seedContinuityFromDirectorPlan(projectId, directorPlan, sc
     'Keep wardrobe, accessories, and props identical across cuts unless the story changes them.',
     'Reuse locationId plates — do not redesign rooms between scenes.',
     'Character identity sheets / reference photos override prompt improvisation.',
+    'Apply lookBible color grade, lens language, lighting recipe, and film stock on every shot.',
+    'Echo visual motifs on act openers, closers, and cold-open beats.',
   ]));
 
   bible.lastUpdated = new Date();

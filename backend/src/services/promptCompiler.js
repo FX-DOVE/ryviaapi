@@ -1,6 +1,7 @@
-import styleService from './styleService.js';
+import styleService, { formatLookBibleBlock } from './styleService.js';
 import CreativeProfile from '../models/CreativeProfile.js';
 import { extractContinuityPrompt } from './continuityService.js';
+import { formatEmotionPictureHint } from './emotionPictureMap.js';
 
 /**
  * Compile a scene / beat visual prompt with style, ContinuityBible, and
@@ -15,6 +16,8 @@ import { extractContinuityPrompt } from './continuityService.js';
  * @param {string} [extras.environmentLockBlock]
  * @param {string} [extras.wardrobeBlock]
  * @param {string} [extras.continuityBlock]  prebuilt; otherwise loaded from projectId
+ * @param {object} [extras.lookBible]
+ * @param {string[]} [extras.motifs]
  */
 export async function compileScenePrompt(rawPrompt, sceneConfig, project = null, extras = {}) {
   let prompt = await styleService.enrichScenePrompt(rawPrompt, sceneConfig, project);
@@ -35,6 +38,23 @@ export async function compileScenePrompt(rawPrompt, sceneConfig, project = null,
     }
   }
   if (continuityBlock) parts.push(continuityBlock);
+
+  const lookBlock = formatLookBibleBlock(extras.lookBible || sceneConfig.lookBible);
+  if (lookBlock) parts.push(lookBlock);
+
+  if (extras.motifs?.length || sceneConfig.motifs?.length) {
+    const motifs = extras.motifs || sceneConfig.motifs;
+    parts.push(`VISUAL MOTIFS: ${motifs.join(' | ')}`);
+  }
+
+  if (sceneConfig.enrichedVisual) {
+    parts.push(`ENRICHED VISUAL: ${sceneConfig.enrichedVisual}`);
+  }
+  if (sceneConfig.beautyNotes) {
+    parts.push(`BEAUTY NOTES: ${sceneConfig.beautyNotes}`);
+  }
+
+  parts.push(formatEmotionPictureHint(sceneConfig.emotion || sceneConfig.styleConfig?.emotion || 'neutral'));
 
   if (extras.characterLockBlock) {
     parts.push(`CHARACTER LOCKS:\n${extras.characterLockBlock}`);

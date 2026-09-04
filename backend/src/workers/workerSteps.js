@@ -96,6 +96,9 @@ export async function processDirectingStep(jobId) {
   let sourceScript = rawScript;
   let directorNotes = job.input.styleGuide || '';
   let screenplayScenes = null;
+  let lookBible = null;
+  let motifs = [];
+  let audioSpine = [];
   if (job.screenplayId) {
     const { default: Screenplay } = await import('../models/Screenplay.js');
     const { renderScreenplayForDirector } = await import('../services/screenplayService.js');
@@ -107,6 +110,9 @@ export async function processDirectingStep(jobId) {
       .filter(Boolean).join('\n');
     // Capture approved scenes for dialogue reconciliation
     screenplayScenes = screenplay.scenes || [];
+    lookBible = screenplay.lookBible || null;
+    motifs = screenplay.motifs || [];
+    audioSpine = screenplay.audioSpine || [];
     await logInfo(jobId, `📖 Directing from approved screenplay "${screenplay.title}" (${screenplayScenes.length} scenes, ${sourceScript.length} chars)`);
   } else if (!sourceScript.trim()) {
     throw new Error(`[WorkerSteps] Job ${jobId} has no script, prompt or screenplay to direct`);
@@ -151,6 +157,9 @@ export async function processDirectingStep(jobId) {
     jobId,
     screenplayScenes, // pass approved scenes for dialogue reconciliation
     worldDna,
+    lookBible,
+    motifs,
+    audioSpine,
   });
 
   // Stage 4: Plan generation strategies for each beat
@@ -169,6 +178,10 @@ export async function processDirectingStep(jobId) {
 
   for (const act of directorPlan.acts || []) {
     for (const scene of act.scenes || []) {
+      const spMatch = (screenplayScenes || []).find(s =>
+        Number(s.sceneNumber) === Number(scene.screenplaySceneNumber || scene.sceneNumber)
+        || Number(s.sceneNumber) === Number(scene.globalSceneNumber)
+      );
       scenesDocs.push({
         jobId,
         sceneNumber:       scene.globalSceneNumber,
@@ -182,6 +195,10 @@ export async function processDirectingStep(jobId) {
         emotion:           scene.emotion || 'neutral',
         intensity:         scene.intensity || 5,
         actionDescription: scene.summary || '',
+        enrichedVisual:    spMatch?.enrichedVisual || '',
+        beautyNotes:       spMatch?.beautyNotes || '',
+        motifRefs:         spMatch?.motifRefs || [],
+        isColdOpen:        !!spMatch?.isColdOpen,
         beats:             (scene.beats || []).map((b, i) => ({
           beatNumber:      i + 1,
           globalBeatNumber: b.globalBeatNumber,
@@ -221,8 +238,11 @@ export async function processDirectingStep(jobId) {
   // Seed ContinuityBible so wardrobe / locations / accessories inject into every prompt path
   if (job.projectId) {
     try {
-      await seedContinuityFromDirectorPlan(job.projectId, directorPlan, job.screenplayId || null);
-      await logInfo(jobId, '📖 ContinuityBible seeded from director plan (wardrobe, locations, accessories)');
+      await seedContinuityFromDirectorPlan(job.projectId, directorPlan, job.screenplayId || null, {
+        lookBible: directorPlan.lookBible || lookBible,
+        motifs: directorPlan.motifs || motifs,
+      });
+      await logInfo(jobId, '📖 ContinuityBible seeded from director plan (wardrobe, locations, accessories, lookBible)');
     } catch (contErr) {
       console.warn(`[WorkerSteps] ContinuityBible seed failed: ${contErr.message}`);
     }
@@ -542,6 +562,8 @@ export async function processSegmentStep(jobId) {
   const environmentLocks = job.environmentLocks || {};
   const animationStyle = job.animationStyle || 'cinematic';
   const wardrobeByAct = job.wardrobeByAct || {};
+  const lookBible = directorPlan?.lookBible || null;
+  const motifs = directorPlan?.motifs || [];
 
   let continuityBlock = '';
   if (job.projectId) {
@@ -572,6 +594,8 @@ export async function processSegmentStep(jobId) {
     animationStyle,
     continuityBlock,
     wardrobeByAct,
+    lookBible,
+    motifs,
     onKeyframeReady: async (sceneDoc, keyframePath) => {
       sceneDoc.imagePath = keyframePath;
       await sceneDoc.save();
@@ -648,6 +672,8 @@ export async function processSegmentStep(jobId) {
         carryInFrame,
         continuityBlock,
         wardrobeByCharacter: wardrobeByAct[actKey] || {},
+        lookBible,
+        motifs,
         onSegmentComplete: async (segNum, videoPath) => {
           emitJobEvent(jobId, 'segment_complete', {
             sceneNumber: sceneNum,

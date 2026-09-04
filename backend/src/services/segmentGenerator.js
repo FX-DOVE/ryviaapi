@@ -246,7 +246,10 @@ export async function pregenerateAllSceneKeyframes({
   jobId, scenes, directorPlan, characterLocks = {},
   environmentLocks = {}, animationStyle = 'cinematic',
   onKeyframeReady = null, continuityBlock = '', wardrobeByAct = {},
+  lookBible = null, motifs = [],
 }) {
+  const packLookBible = lookBible || directorPlan?.lookBible || null;
+  const packMotifs = (motifs && motifs.length) ? motifs : (directorPlan?.motifs || []);
   const imgDir = sceneImgDir(jobId);
   await fs.promises.mkdir(imgDir, { recursive: true });
 
@@ -301,6 +304,8 @@ export async function pregenerateAllSceneKeyframes({
       {
         continuityBlock,
         wardrobeByCharacter: wardrobeByAct[actNum] || wardrobeByAct[actObj.actNumber] || {},
+        lookBible: packLookBible,
+        motifs: packMotifs,
       },
     );
 
@@ -356,6 +361,7 @@ export async function generateSceneSegments({
   jobId, scene, act, characterLocks = {}, environmentLock = '',
   animationStyle = 'cinematic', carryInFrame = null, onSegmentComplete = null,
   continuityBlock = '', wardrobeByCharacter = {},
+  lookBible = null, motifs = [],
 }) {
   const sceneNum = String(scene.globalSceneNumber || scene.sceneNumber).padStart(4, '0');
   const segDir = segmentDir(jobId);
@@ -391,7 +397,7 @@ export async function generateSceneSegments({
 
     const { imagePrompt, videoPrompt } = buildBeatPrompts(
       beat, scene, act, charLockPrompts, envLock.lockPrompt, animationStyle,
-      { continuityBlock, wardrobeByCharacter },
+      { continuityBlock, wardrobeByCharacter, lookBible, motifs },
     );
 
     const keyframePath = path.join(imgDir, `${segmentId}_keyframe.jpg`);
