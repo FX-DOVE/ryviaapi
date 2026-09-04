@@ -70,10 +70,22 @@ function openAiTransport(id, base, apiKey, model) {
 
 // ─── OpenAI-compatible /chat/completions ─────────────────────────────────────
 
+function retryDelayMs(err, attempt) {
+  const msg = String(err?.message || '');
+  const status = err?.status;
+  // Groq often embeds "Please try again in X.Ys" in 429 bodies.
+  const m = msg.match(/try again in\s+([0-9.]+)\s*s/i);
+  if (m) return Math.ceil(parseFloat(m[1]) * 1000) + 500;
+  if (status === 429 || status === 503 || /HTTP 429|HTTP 503|UNAVAILABLE|high demand|Rate limit/i.test(msg)) {
+    return Math.min(30000, attempt * 4000);
+  }
+  return attempt * 1500;
+}
+
 async function runViaOpenAiCompatible(base, apiKey, model, messages, { maxTokens, temperature }) {
   if (!model) throw new Error('no model configured for this endpoint');
 
-  const maxAttempts = 3;
+  const maxAttempts = 5;
   let lastError;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -107,8 +119,10 @@ async function runViaOpenAiCompatible(base, apiKey, model, messages, { maxTokens
       return text;
     } catch (err) {
       lastError = err;
+      // Gemini 503s are often cluster-wide; fail over to the next transport after two tries.
+      if (err?.status === 503 && attempt >= 2) break;
       if (attempt < maxAttempts) {
-        const delay = attempt * 1500;
+        const delay = retryDelayMs(err, attempt);
         console.warn(`[ReasoningProvider] attempt ${attempt} failed (${err.message}), retrying in ${delay}ms...`);
         await new Promise((r) => setTimeout(r, delay));
       }
@@ -180,7 +194,7 @@ export async function generateWithFallback(options = {}, ...rest) {
     try {
       console.log(
         `[ReasoningProvider] ${purpose}${jobId ? ` (job ${jobId})` : ''} → `
-        + `${transport.id} / ${transport.model}`,
+        + `${transport.id} / ${transport.model} @ ${transport.endpoint}`,
       );
       const text = await transport.run(messages, { maxTokens, temperature });
       if (!text) throw new Error('returned an empty completion');

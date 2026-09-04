@@ -17,8 +17,8 @@
  *   FRAME_BRIDGE                      last frame + target frame  → LTX FLF2V
  *
  * Qwen-Image-Edit takes at most 3 reference images and inherits the FIRST one's
- * dimensions, so the wide plate (previous frame or environment lock) always goes
- * first and character sheets follow.
+ * face identity, so character lock sheets are placed FIRST; the previous-frame
+ * / environment plate follows for location continuity (see makeKeyframe).
  */
 
 import fs from 'fs';
