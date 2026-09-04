@@ -46,6 +46,38 @@ const VIDEO_RESOLUTION = process.env.LTX_RESOLUTION && LTX_RESOLUTIONS[process.e
 const [KEYFRAME_WIDTH, KEYFRAME_HEIGHT] = LTX_RESOLUTIONS[VIDEO_RESOLUTION];
 
 const MAX_EDIT_REFERENCES = 3;
+const MAX_SEGMENT_ATTEMPTS = Math.max(1, parseInt(process.env.SEGMENT_MAX_RETRIES || '3', 10));
+const RETRY_BASE_MS = Math.max(500, parseInt(process.env.SEGMENT_RETRY_BASE_MS || '2000', 10));
+
+const ANIME_NEGATIVE_PROMPT = [
+  'photorealistic, live action, real human photo, western cartoon, chibi overload,',
+  'deformed face, extra limbs, melted features, low quality, blurry, watermark, text overlay',
+].join(' ');
+
+function negativeForStyle(animationStyle = '') {
+  const s = String(animationStyle || '').toLowerCase();
+  if (s.includes('anime') || s === '2d_anime' || s === 'animation_anime') {
+    return ANIME_NEGATIVE_PROMPT;
+  }
+  return REALISM_NEGATIVE_PROMPT;
+}
+
+async function withRetries(label, fn, attempts = MAX_SEGMENT_ATTEMPTS) {
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[SegmentGenerator] ${label} attempt ${attempt}/${attempts} failed: ${err.message}`);
+      if (attempt < attempts) {
+        const wait = RETRY_BASE_MS * attempt;
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  }
+  throw lastErr;
+}
 
 /**
  * Locks arrive either as a bare prompt string (older callers) or as
@@ -137,7 +169,7 @@ function existingPath(candidate) {
  *
  * @returns {Promise<string>} keyframePath
  */
-async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = [], label }) {
+async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = [], label, animationStyle = 'cinematic' }) {
   // Character identity photos go first — Qwen-Image-Edit inherits the first
   // reference's face. The previous-frame plate follows for location continuity.
   const refs = [];
@@ -149,38 +181,50 @@ async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = 
     refs.push(plate);
   }
 
+  const neg = negativeForStyle(animationStyle);
   const editOptions = {
-    negative_prompt: REALISM_NEGATIVE_PROMPT,
+    negative_prompt: neg,
     num_inference_steps: 50,
   };
 
-  // If ANY reference image is available (plate or character photo), use Qwen-Image-Edit directly!
-  if (refs.length > 0) {
-    const instruction = [
-      plate
-        ? 'Continue this exact scene as the next shot of the same film. Keep the same characters — identical faces, skin tones, hair, wardrobe — and the same location.'
-        : 'Generate a cinematic film still featuring this exact person. Keep their IDENTICAL face, facial features, skin tone, hair, age, and natural body proportions from the reference image.',
-      'Do NOT change skin color, do NOT smooth or airbrush skin, do NOT alter facial features.',
-      'Maintain natural human skin texture, realistic lighting, film grain, RAW photography quality.',
-      imagePrompt,
-    ].join(' ');
+  const anime = String(animationStyle || '').toLowerCase().includes('anime');
 
-    console.log(`[SegmentGenerator] 📸 ${label}: generating keyframe via Qwen-Image-Edit with ${refs.length} reference(s)...`);
-    await images.edit(refs, instruction, keyframePath, editOptions);
-    console.log(`[SegmentGenerator] ✅ ${label}: keyframe generated with Qwen-Image-Edit using references`);
+  return withRetries(`keyframe ${label}`, async () => {
+    // If ANY reference image is available (plate or character photo), use Qwen-Image-Edit.
+    // This is the identity path: uploaded character sheets MUST reach img2img/edit here.
+    if (refs.length > 0) {
+      const instruction = [
+        plate
+          ? (anime
+            ? 'Continue this exact anime scene as the next shot. Keep identical character designs, hair, eyes, costume, and painted background continuity.'
+            : 'Continue this exact scene as the next shot of the same film. Keep the same characters — identical faces, skin tones, hair, wardrobe — and the same location.')
+          : (anime
+            ? 'Generate an anime production still of this exact character. Keep IDENTICAL face design, hair, eye shape, costume silhouette from the reference sheet.'
+            : 'Generate a cinematic film still featuring this exact person. Keep their IDENTICAL face, facial features, skin tone, hair, age, and natural body proportions from the reference image.'),
+        anime
+          ? 'Do NOT redesign the character. Do NOT change hair color, eye color, or costume.'
+          : 'Do NOT change skin color, do NOT smooth or airbrush skin, do NOT alter facial features.',
+        anime
+          ? 'Clean lineart, consistent cel shading, professional anime studio quality.'
+          : 'Maintain natural human skin texture, realistic lighting, film grain, RAW photography quality.',
+        imagePrompt,
+      ].join(' ');
+
+      console.log(`[SegmentGenerator] 📸 ${label}: Qwen-Image-Edit with ${refs.length} reference(s) (identity sheets first)...`);
+      await images.edit(refs, instruction, keyframePath, editOptions);
+      console.log(`[SegmentGenerator] ✅ ${label}: keyframe via Qwen-Image-Edit using character/env refs`);
+      return keyframePath;
+    }
+
+    console.log(`[SegmentGenerator] 🖼️ ${label}: no reference images — text-to-image fallback`);
+    await images.generate(imagePrompt, keyframePath, {
+      width: KEYFRAME_WIDTH,
+      height: KEYFRAME_HEIGHT,
+      negative_prompt: neg,
+      num_inference_steps: 50,
+    });
     return keyframePath;
-  }
-
-  // Pure text-to-image fallback ONLY when NO reference images exist at all
-  console.log(`[SegmentGenerator] 🖼️ ${label}: no reference images found — generating from text...`);
-  await images.generate(imagePrompt, keyframePath, {
-    width: KEYFRAME_WIDTH,
-    height: KEYFRAME_HEIGHT,
-    negative_prompt: REALISM_NEGATIVE_PROMPT,
-    num_inference_steps: 50,
   });
-
-  return keyframePath;
 }
 
 /**
@@ -201,7 +245,7 @@ async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = 
 export async function pregenerateAllSceneKeyframes({
   jobId, scenes, directorPlan, characterLocks = {},
   environmentLocks = {}, animationStyle = 'cinematic',
-  onKeyframeReady = null,
+  onKeyframeReady = null, continuityBlock = '', wardrobeByAct = {},
 }) {
   const imgDir = sceneImgDir(jobId);
   await fs.promises.mkdir(imgDir, { recursive: true });
@@ -249,26 +293,45 @@ export async function pregenerateAllSceneKeyframes({
       characterNames: sceneDoc.characters || planScene?.characters || [],
     };
 
+    const actObj = planScene?._act || { actNumber: 1 };
+    const actNum = String(actObj.actNumber || 1);
     const { imagePrompt } = buildBeatPrompts(
-      firstBeat, sceneData, planScene?._act || { actNumber: 1 },
+      firstBeat, sceneData, actObj,
       charLockPrompts, envLock.lockPrompt, animationStyle,
+      {
+        continuityBlock,
+        wardrobeByCharacter: wardrobeByAct[actNum] || wardrobeByAct[actObj.actNumber] || {},
+      },
     );
 
     const characterRefs = characterReferencesFor(firstBeat, sceneData, charLocks);
+    if (characterRefs.length === 0 && Object.keys(charLocks).length > 0) {
+      console.warn(
+        `[SegmentGenerator] Scene ${sceneNum}: character locks exist but no referenceImagePath matched `
+        + `speaker/characters — identity sheet will NOT condition this keyframe`,
+      );
+    }
 
     try {
-      console.log(`[SegmentGenerator] Generating anchor keyframe for Scene ${sceneNum}...`);
+      console.log(`[SegmentGenerator] Generating anchor keyframe for Scene ${sceneNum} (${characterRefs.length} char ref(s))...`);
       await makeKeyframe({
         imagePrompt,
         keyframePath,
         plate: envPlate,
         characterRefs,
         label: segmentId,
+        animationStyle,
       });
 
       if (onKeyframeReady) await onKeyframeReady(sceneDoc, keyframePath);
     } catch (err) {
-      console.error(`[SegmentGenerator] ⚠ Failed keyframe for Scene ${sceneNum}: ${err.message}`);
+      console.error(`[SegmentGenerator] ❌ Failed keyframe for Scene ${sceneNum} after retries: ${err.message}`);
+      // Persist failure on the scene doc so the job cannot silently claim success.
+      try {
+        sceneDoc.status = 'failed';
+        sceneDoc.error = `Anchor keyframe failed: ${err.message}`;
+        if (typeof sceneDoc.save === 'function') await sceneDoc.save();
+      } catch { /* plain objects in tests */ }
     }
   }
 
@@ -292,6 +355,7 @@ export async function pregenerateAllSceneKeyframes({
 export async function generateSceneSegments({
   jobId, scene, act, characterLocks = {}, environmentLock = '',
   animationStyle = 'cinematic', carryInFrame = null, onSegmentComplete = null,
+  continuityBlock = '', wardrobeByCharacter = {},
 }) {
   const sceneNum = String(scene.globalSceneNumber || scene.sceneNumber).padStart(4, '0');
   const segDir = segmentDir(jobId);
@@ -327,6 +391,7 @@ export async function generateSceneSegments({
 
     const { imagePrompt, videoPrompt } = buildBeatPrompts(
       beat, scene, act, charLockPrompts, envLock.lockPrompt, animationStyle,
+      { continuityBlock, wardrobeByCharacter },
     );
 
     const keyframePath = path.join(imgDir, `${segmentId}_keyframe.jpg`);
@@ -345,28 +410,26 @@ export async function generateSceneSegments({
       if (videoAlreadyExists) {
         console.log(`[SegmentGenerator] ⏩ Reusing already-generated video segment ${segmentId}`);
       } else {
-        // ── Use pre-generated keyframe, direct continuation, or new camera angle cut ────────────────
-        if (i === 0 && fs.existsSync(keyframePath)) {
-          // First beat: already pre-generated in Phase 1!
-          console.log(`[SegmentGenerator] Using pre-generated keyframe for ${segmentId}`);
-          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-        } else if (lastFramePath && beat.strategy === GENERATION_STRATEGY.CONTINUATION) {
-          // Continuous single-shot motion: direct from video's last frame — ZERO image call!
-          console.log(`[SegmentGenerator] 📹 Direct continuous video from ${path.basename(lastFramePath)}`);
-          await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
-        } else {
-          // Dynamic camera cut (angle change, drone view, over-the-shoulder, reaction shot, wide establishing)
-          // Generates a new keyframe from the target angle with Qwen-Image-Edit, conditioned on references!
-          console.log(`[SegmentGenerator] 🎬 Camera cut / Angle change (${beat.cameraAngle || beat.strategy}): generating new keyframe for ${segmentId}...`);
-          await makeKeyframe({
-            imagePrompt,
-            keyframePath,
-            plate: lastFramePath || envPlate,
-            characterRefs,
-            label: segmentId,
-          });
-          await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
-        }
+        await withRetries(`segment ${segmentId}`, async () => {
+          if (i === 0 && fs.existsSync(keyframePath)) {
+            console.log(`[SegmentGenerator] Using pre-generated keyframe for ${segmentId}`);
+            await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
+          } else if (lastFramePath && beat.strategy === GENERATION_STRATEGY.CONTINUATION) {
+            console.log(`[SegmentGenerator] 📹 Direct continuous video from ${path.basename(lastFramePath)}`);
+            await ltx.imageToVideo(lastFramePath, videoPrompt, videoPath, videoOptions);
+          } else {
+            console.log(`[SegmentGenerator] 🎬 Camera cut (${beat.cameraAngle || beat.strategy}): keyframe+I2V for ${segmentId} (${characterRefs.length} char refs)...`);
+            await makeKeyframe({
+              imagePrompt,
+              keyframePath,
+              plate: lastFramePath || envPlate,
+              characterRefs,
+              label: segmentId,
+              animationStyle,
+            });
+            await ltx.imageToVideo(keyframePath, videoPrompt, videoPath, videoOptions);
+          }
+        });
       }
 
       // Hand this segment's final frame to the next one.
@@ -407,10 +470,25 @@ export async function generateSceneSegments({
     }
   }
 
-  const sceneVideoPath = await stitchSegments(
-    jobId, sceneNum,
-    segments.filter((s) => s.status === 'done' && s.videoPath),
-  );
+  const done = segments.filter((s) => s.status === 'done' && s.videoPath);
+  const failed = segments.filter((s) => s.status === 'failed');
+
+  if (done.length === 0 && beats.length > 0) {
+    const reasons = failed.map((s) => s.error || 'unknown').slice(0, 3).join(' | ');
+    throw new Error(
+      `[SegmentGenerator] Scene ${sceneNum} produced 0 usable segments `
+      + `(${failed.length}/${beats.length} failed). Last errors: ${reasons}`,
+    );
+  }
+
+  if (failed.length > 0) {
+    console.warn(
+      `[SegmentGenerator] Scene ${sceneNum}: ${failed.length}/${segments.length} segments failed — `
+      + `stitching ${done.length} successful clip(s)`,
+    );
+  }
+
+  const sceneVideoPath = await stitchSegments(jobId, sceneNum, done);
 
   return { segments, sceneVideoPath, lastFramePath };
 }

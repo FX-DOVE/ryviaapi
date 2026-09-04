@@ -161,11 +161,15 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
       animationStyle,
     });
 
+    const animeStyle = String(animationStyle || '').toLowerCase().includes('anime');
+    const neg = animeStyle
+      ? 'photorealistic, live action, deformed face, extra limbs, low quality, blurry, watermark'
+      : REALISM_NEGATIVE_PROMPT;
     try {
       await images.generate(refPrompt, refImagePath, {
         width: 1024,
         height: 1024,
-        negative_prompt: REALISM_NEGATIVE_PROMPT,
+        negative_prompt: neg,
         num_inference_steps: 50,
       });
       console.log(`[ConsistencyLock] ✅ Text-to-image lock created for "${character.name}" (World DNA matched): ${refImagePath}`);

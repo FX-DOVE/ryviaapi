@@ -30,6 +30,9 @@ import { analyzeScript } from '../services/scriptAnalyzer.js';
 import { decomposeScript, planGenerationStrategies, buildBeatPrompts } from '../services/cinematicDirectorEngine.js';
 import { createCharacterLock, createEnvironmentLock, getActWardrobe, buildCharacterLockPrompt } from '../services/consistencyLockService.js';
 import { generateSceneSegments, pregenerateAllSceneKeyframes } from '../services/segmentGenerator.js';
+import { seedContinuityFromDirectorPlan, extractContinuityPrompt } from '../services/continuityService.js';
+import { getDirectorBible } from '../services/styleService.js';
+import { getFormatDirective } from '../services/webResearchService.js';
 import { assembleVideo } from '../services/videoAssembler.js';
 import { generateThumbnailFromVideo } from '../services/thumbnailService.js';
 import { deleteTempFiles, getFileSize, uploadToCloud } from '../services/storageService.js';
@@ -131,11 +134,18 @@ export async function processDirectingStep(jobId) {
     console.warn(`[WorkerSteps] Pre-direct vision pass skipped: ${visErr.message}`);
   }
 
+  const genreKey = job.genre || job.videoType || 'drama';
+  const bibleNotes = [
+    getDirectorBible(genreKey),
+    getFormatDirective(genreKey),
+  ].filter(Boolean).join('\n\n');
+  directorNotes = [directorNotes, bibleNotes].filter(Boolean).join('\n\n');
+
   // Stage 1: Decompose script into director plan
   let directorPlan = await decomposeScript({
     rawScript: sourceScript,
     title: job.title || 'Untitled',
-    genre: job.genre || 'drama',
+    genre: genreKey,
     animationStyle,
     additionalNotes: directorNotes,
     jobId,
@@ -206,6 +216,16 @@ export async function processDirectingStep(jobId) {
 
   if (scenesDocs.length > 0) {
     await Scene.insertMany(scenesDocs);
+  }
+
+  // Seed ContinuityBible so wardrobe / locations / accessories inject into every prompt path
+  if (job.projectId) {
+    try {
+      await seedContinuityFromDirectorPlan(job.projectId, directorPlan, job.screenplayId || null);
+      await logInfo(jobId, '📖 ContinuityBible seeded from director plan (wardrobe, locations, accessories)');
+    } catch (contErr) {
+      console.warn(`[WorkerSteps] ContinuityBible seed failed: ${contErr.message}`);
+    }
   }
 
   await logInfo(jobId, `✅ Director plan: ${directorPlan.acts?.length} acts, ${directorPlan.totalScenes} scenes, ${directorPlan.totalBeats} beats (8s segments)`);
@@ -420,10 +440,47 @@ export async function processLockStep(jobId) {
     }
   }
 
+  // Enrich lock prompts with act wardrobe so clothingByAct reaches every beat compile
+  const wardrobeByAct = {};
+  for (const char of characters) {
+    const lock = characterLocks[char.name];
+    if (!lock) continue;
+    const byAct = char.clothingByAct || {};
+    for (const [actKey, outfit] of Object.entries(byAct)) {
+      if (!outfit) continue;
+      if (!wardrobeByAct[actKey]) wardrobeByAct[actKey] = {};
+      wardrobeByAct[actKey][char.name] = outfit;
+    }
+    // Also expose default via getActWardrobe helper for act 1
+    const act1 = getActWardrobe(char, 1);
+    if (act1) {
+      if (!wardrobeByAct['1']) wardrobeByAct['1'] = {};
+      wardrobeByAct['1'][char.name] = wardrobeByAct['1'][char.name] || act1;
+      if (lock.lockPrompt && !String(lock.lockPrompt).includes(act1)) {
+        lock.lockPrompt = `${lock.lockPrompt} Act-1 wardrobe: ${act1}.`;
+      }
+    }
+  }
+
+  // Refresh ContinuityBible with lock-derived wardrobe if project exists
+  if (job.projectId && directorPlan) {
+    try {
+      // Stamp clothing onto plan characters from locks before re-seed
+      for (const char of directorPlan.characters || []) {
+        const w = wardrobeByAct['1']?.[char.name] || getActWardrobe(char, 1);
+        if (w) char.clothingDefault = w;
+      }
+      await seedContinuityFromDirectorPlan(job.projectId, directorPlan, job.screenplayId || null);
+    } catch (e) {
+      console.warn(`[WorkerSteps] ContinuityBible wardrobe refresh failed: ${e.message}`);
+    }
+  }
+
   // Save locks to job
   await Job.findByIdAndUpdate(jobId, {
     characterLocks,
     environmentLocks,
+    wardrobeByAct,
   });
 
   await logInfo(jobId, `✅ Locked: ${Object.keys(characterLocks).length} characters, ${Object.keys(environmentLocks).length} environments`);
@@ -484,8 +541,25 @@ export async function processSegmentStep(jobId) {
   const characterLocks = job.characterLocks || {};
   const environmentLocks = job.environmentLocks || {};
   const animationStyle = job.animationStyle || 'cinematic';
+  const wardrobeByAct = job.wardrobeByAct || {};
+
+  let continuityBlock = '';
+  if (job.projectId) {
+    try {
+      continuityBlock = await extractContinuityPrompt(job.projectId, {});
+      // Keep prompt budgets sane for Qwen / LTX (full bible can be huge on long films)
+      if (continuityBlock && continuityBlock.length > 3500) {
+        continuityBlock = continuityBlock.slice(0, 3500) + '\n[ContinuityBible truncated]';
+      }
+    } catch (e) {
+      console.warn(`[WorkerSteps] ContinuityBible extract failed: ${e.message}`);
+    }
+  }
 
   const scenes = await Scene.find({ jobId }).sort({ sceneNumber: 1 });
+  if (!scenes.length) {
+    throw new Error(`[WorkerSteps] No scenes found for job ${jobId} — directing step produced an empty plan`);
+  }
 
   // ─── PHASE 1: BATCH KEYFRAME PRE-GENERATION (Keeps Qwen Image GPU warm) ───
   await logInfo(jobId, `🖼️ Phase 1/2: Batch-generating all ${scenes.length} scene anchor keyframes...`);
@@ -496,6 +570,8 @@ export async function processSegmentStep(jobId) {
     characterLocks,
     environmentLocks,
     animationStyle,
+    continuityBlock,
+    wardrobeByAct,
     onKeyframeReady: async (sceneDoc, keyframePath) => {
       sceneDoc.imagePath = keyframePath;
       await sceneDoc.save();
@@ -558,16 +634,20 @@ export async function processSegmentStep(jobId) {
     };
 
     try {
+      const actObj = planScene?._act || { actNumber: sceneDoc.act || 1 };
+      const actKey = String(actObj.actNumber || 1);
       const { segments, sceneVideoPath, lastFramePath } = await generateSceneSegments({
         jobId,
         scene: sceneData,
-        act: planScene?._act || { actNumber: sceneDoc.act || 1 },
+        act: actObj,
         // Full lock objects: segmentGenerator needs referenceImagePath to pass the
         // character sheets to Qwen-Image-Edit, and accepts bare prompts too.
         characterLocks,
         environmentLock: envLock,
         animationStyle,
         carryInFrame,
+        continuityBlock,
+        wardrobeByCharacter: wardrobeByAct[actKey] || {},
         onSegmentComplete: async (segNum, videoPath) => {
           emitJobEvent(jobId, 'segment_complete', {
             sceneNumber: sceneNum,
@@ -609,7 +689,52 @@ export async function processSegmentStep(jobId) {
     emitJobEvent(jobId, 'job_progress', { progress, completedScenes, totalScenes: scenes.length });
   }
 
-  await logInfo(jobId, `✅ Segment generation complete: ${completedScenes}/${scenes.length} scenes`);
+  const failedCount = await Scene.countDocuments({ jobId, status: SCENE_STATUS.FAILED });
+  const doneCount = await Scene.countDocuments({ jobId, status: SCENE_STATUS.DONE });
+
+  await logInfo(
+    jobId,
+    `Segment generation finished: ${doneCount} done, ${failedCount} failed, ${scenes.length} total `
+    + `(completedScenes counter=${completedScenes})`,
+  );
+
+  if (doneCount === 0) {
+    const errMsg = (
+      `All ${scenes.length} scenes failed during segment generation. `
+      + 'Check RunPod image/video endpoints, character reference uploads, and worker logs. '
+      + 'The job will not assemble an empty film.'
+    );
+    await logError(jobId, errMsg);
+    await Job.findByIdAndUpdate(jobId, {
+      status: JOB_STATUS.FAILED,
+      error: errMsg,
+      progress: 40,
+    });
+    emitJobEvent(jobId, 'job_failed', { error: errMsg });
+    throw new Error(errMsg);
+  }
+
+  if (failedCount > 0 && failedCount >= Math.ceil(scenes.length / 2)) {
+    const errMsg = (
+      `Segment generation incomplete: ${failedCount}/${scenes.length} scenes failed `
+      + `(only ${doneCount} succeeded). Fix failing scenes and retry — refusing to assemble a half-broken film.`
+    );
+    await logError(jobId, errMsg);
+    await Job.findByIdAndUpdate(jobId, {
+      status: JOB_STATUS.FAILED,
+      error: errMsg,
+      progress: 40 + Math.round((doneCount / scenes.length) * 40),
+    });
+    emitJobEvent(jobId, 'job_failed', { error: errMsg });
+    throw new Error(errMsg);
+  }
+
+  if (failedCount > 0) {
+    await logWarn(
+      jobId,
+      `${failedCount} scene(s) failed but ${doneCount} succeeded — continuing assembly with available scenes`,
+    );
+  }
 
   await triggerNextStep(jobId, 'segment_generation');
 }
@@ -625,6 +750,12 @@ export async function processRenderingStep(jobId) {
   await logInfo(jobId, '🎬 Assembling final film from scene videos...');
 
   const scenes = await Scene.find({ jobId, status: SCENE_STATUS.DONE }).sort({ sceneNumber: 1 });
+  if (!scenes.length) {
+    const errMsg = 'Rendering aborted: no completed scenes to assemble.';
+    await logError(jobId, errMsg);
+    await Job.findByIdAndUpdate(jobId, { status: JOB_STATUS.FAILED, error: errMsg });
+    throw new Error(errMsg);
+  }
   const localScenes = [];
 
   const jobTempDir = path.join(tempDir(jobId), 'assembly');
