@@ -28,14 +28,14 @@ export async function startJobPipeline(jobId, steps = null) {
       // Final video already rendered! Resume directly at upload/notification
       plan = ['upload', 'notify'];
     } else if (allScenesDone) {
-      // All scenes generated and ready! Resume directly at rendering/assembly
-      plan = ['rendering', 'upload', 'notify'];
+      // Scenes ready — build underscore mix then assemble
+      plan = ['audio', 'rendering', 'upload', 'notify'];
     } else if (hasDirectorPlan && hasLocks) {
       // Plan and locks already completed! Resume at segment generation
-      plan = ['segment_generation', 'rendering', 'upload', 'notify'];
+      plan = ['segment_generation', 'audio', 'rendering', 'upload', 'notify'];
     } else if (hasDirectorPlan) {
       // Director plan exists, resume at locking
-      plan = ['locking', 'segment_generation', 'rendering', 'upload', 'notify'];
+      plan = ['locking', 'segment_generation', 'audio', 'rendering', 'upload', 'notify'];
     } else if (job.screenplayId) {
       plan = [...SCREENPLAY_PIPELINE_STEPS];
     } else {

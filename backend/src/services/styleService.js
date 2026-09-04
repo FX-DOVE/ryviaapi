@@ -138,6 +138,9 @@ LOCATIONS:
 PERFORMANCE DIRECTION:
 - gaze must name who looks at whom. Characters speaking to each other maintain eyeline.
 - voiceDirection and expression are required on every dialogue beat.
+AUDIO (LTX native):
+- audioCues demand clear spoken dialogue + natural room tone. Never strip ambience.
+- Music is underscore-only via audioSpine; silence cues = score dips, not muted dialogue.
 OUTPUT: structured JSON acts → scenes → beats the pipeline consumes — never prose summaries.`,
 
   movie: `STUDIO DIRECTOR BIBLE — FEATURE FILM / MOVIE
@@ -160,7 +163,8 @@ LOCATIONS:
 - timeVariants day/night required for every environment.
 PRODUCTION VALUES:
 - Motivated camera moves only. Explicit startFrameVisual / endFrameVisual on every beat.
-- audioCues for ambience, Foley, and score swell notes (LTX native audio).
+- audioCues MUST request clear intelligible dialogue + room tone/ambience/Foley for LTX native audio. Score/music swells belong on the audioSpine underscore layer only (no competing dialogue in the score).
+AUDIO RULE: Never instruct LTX to omit dialogue audio. Silence cues on the spine are intentional score dips under preserved native dialogue.
 OUTPUT: structured JSON with reusable locationId, clothingByAct, props, accessories, characterState.`,
 
   anime: `STUDIO DIRECTOR BIBLE — ANIME / ANIMATED SERIES
@@ -185,6 +189,9 @@ WARDROBE / CONTINUITY:
 LOCATIONS:
 - Distinct painted BG plates with timeVariants (day / dusk / night / golden hour).
 - Reuse locationId for recurring school, home, city rooftop, etc.
+AUDIO (LTX native):
+- audioCues demand clear spoken dialogue (or soft inner monologue) + room tone / ambient beds.
+- Score is underscore-only via audioSpine; silence cues dip the score, never mute native dialogue.
 OUTPUT: structured JSON acts/scenes/beats with anime camera enums, wardrobe locks, and prop continuity.`,
 
   documentary: `STUDIO DIRECTOR BIBLE — DOCUMENTARY

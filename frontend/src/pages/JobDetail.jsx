@@ -5,7 +5,7 @@ import {
   Layers, Image as ImageIcon, CheckCircle, Video, Users, MapPin,
   ChevronDown, ChevronUp, ShieldCheck, User, Volume2, Shirt, Clapperboard,
   RotateCcw, Eye, Clock, AlertCircle, Quote, Sparkle, Camera, Compass,
-  ZoomIn, X, ExternalLink
+  ZoomIn, X, ExternalLink, Scissors
 } from 'lucide-react';
 import useAppStore from '../store/useAppStore';
 import {
@@ -408,6 +408,12 @@ export default function JobDetail() {
         </div>
 
         <div className="flex flex-wrap gap-3">
+          {(isComplete || activeScenes.some(s => s.videoPath || s.status === 'done')) && (
+            <AppButton variant="secondary" onClick={() => navigate(`/app/jobs/${id}/editor`)} icon={Scissors}>
+              Edit in Studio
+            </AppButton>
+          )}
+
           {isComplete && (
             <a href={getVideoStreamUrl(id)} download={`${job.title}.mp4`} className="btn btn-primary h-10 px-4">
               <Download size={16} /> <span className="ml-2">Export 4K MP4</span>
