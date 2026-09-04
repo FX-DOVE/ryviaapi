@@ -84,6 +84,22 @@ export function passwordResetTemplate({ name, resetUrl }) {
   };
 }
 
+export function verificationCodeTemplate({ name, code }) {
+  const display = name || 'there';
+  return {
+    subject: 'Your Reyvia verification code',
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;color:#111">
+        <h1 style="font-size:22px">Verify your email</h1>
+        <p>Hi ${escapeHtml(display)}, use this code to finish creating your Reyvia account:</p>
+        <p style="font-size:32px;letter-spacing:8px;font-weight:700;margin:24px 0">${escapeHtml(String(code))}</p>
+        <p style="color:#666;font-size:13px">This code expires in 20 minutes. If you did not sign up, ignore this email.</p>
+      </div>
+    `,
+    text: `Hi ${display}, your Reyvia verification code is ${code}. It expires in 20 minutes.`,
+  };
+}
+
 export function videoReadyTemplate({ name, title, jobUrl }) {
   const display = name || 'there';
   const film = title || 'Your film';
@@ -119,6 +135,11 @@ export async function sendPasswordResetEmail(user, resetToken) {
   return sendMail({ to: user?.email, ...tpl });
 }
 
+export async function sendVerificationCodeEmail(email, code, name) {
+  const tpl = verificationCodeTemplate({ name, code });
+  return sendMail({ to: email, ...tpl });
+}
+
 export async function sendVideoReadyEmail(user, job) {
   if (!user?.email) return { skipped: true, reason: 'missing_email' };
   const jobUrl = `${getAppUrl()}/app/jobs/${job?._id || job?.id || ''}`;
@@ -149,10 +170,12 @@ export default {
   sendMail,
   sendWelcomeEmail,
   sendPasswordResetEmail,
+  sendVerificationCodeEmail,
   sendVideoReadyEmail,
   sendAdminBulkEmail,
   welcomeTemplate,
   passwordResetTemplate,
+  verificationCodeTemplate,
   videoReadyTemplate,
   adminBulkTemplate,
 };
