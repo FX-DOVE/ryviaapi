@@ -461,6 +461,15 @@ pm2 save
 pm2 startup
 ```
 
+### 5. Character continuity & drama / movie / anime (VPS)
+
+For long-form drama, movie, and anime jobs on a VPS:
+
+1. Upload character reference photos in Film Characters **before** locking/directing — locks persist the photo as the identity sheet and pass it into Qwen-Image-Edit (img2img/edit) for every keyframe.
+2. Copy `.env.example` → `.env` on the VPS and fill **placeholders only** (`RUNPOD_*`, `GEMINI_API_KEY`, `S3_*`, optional `IMAGE_API_KEY` / `VIDEO_API_KEY` / `GROQ_API_KEY`). Never commit real secrets.
+3. Ensure `RUNPOD_QWEN_EDIT_ENDPOINT_ID` is set — character identity conditioning requires the edit endpoint (not text-to-image alone).
+4. Failed scenes no longer silently assemble: if all (or ≥50%) of scenes fail segment generation, the job fails with a clear error so you can retry after fixing GPU / refs.
+
 ### 5. Nginx Web Server Configuration
 Copy the provided Nginx configuration file:
 ```bash
