@@ -102,7 +102,7 @@
   --bottom-nav-height: 58px;
   --bottom-nav-total: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
   /* Mobile chrome (hamburger + wallet chip) clearance */
-  --chrome-top-offset: calc(max(12px, env(safe-area-inset-top, 0px)) + 52px);
+  --chrome-top-offset: calc(max(12px, env(safe-area-inset-top, 0px)) + 60px); /* ~72px: clear hamburger/wallet + gap */
   /* Consistent page gutters — mobile-first */
   --page-gutter: 16px;
   --page-gutter-md: 20px;
@@ -2714,7 +2714,7 @@ input[type='file']::file-selector-button:hover {
      (44px button at top:12px → 12 + 44 + 12 = 68px, round up to 72px).
      Horizontal padding is symmetric — the hamburger is fixed-position and
      floats over content, so we don't need to indent the content body for it. */
-  .page-container        { padding: max(72px, calc(env(safe-area-inset-top) + 68px)) max(16px, env(safe-area-inset-right)) max(48px, calc(env(safe-area-inset-bottom) + 32px)) max(16px, env(safe-area-inset-left)); }
+  .page-container        { padding: var(--chrome-top-offset) var(--page-gutter) max(48px, calc(env(safe-area-inset-bottom) + 32px)) var(--page-gutter); }
   .page-title            { font-size: 28px; }
   .section-title         { font-size: 22px; }
 
@@ -2767,14 +2767,11 @@ input[type='file']::file-selector-button:hover {
   .toast-container       { left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 12px); }
   .toast                 { min-width: 0; width: 100%; }
 
-  /* Film Studio Mobile — full-width body, no side padding (panels manage their own gutter) */
+  /* Film Studio Mobile — share AppPage gutters; keep cards inset like Projects/Billing */
   .film-studio-body {
     padding: 0;
     max-width: 100%;
     width: 100%;
-  }
-  .film-studio-header { 
-    padding: 16px; 
   }
   .concept-grid, 
   .character-grid,
@@ -2785,10 +2782,7 @@ input[type='file']::file-selector-button:hover {
     gap: 16px;
   }
   .film-step-panel {
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    margin: 16px 0 0 0;
+    margin: 12px 0 0 0;
     width: 100%;
     max-width: 100%;
   }
@@ -2821,24 +2815,32 @@ input[type='file']::file-selector-button:hover {
 }
 
 /* ── Page Layout ────────────────────────────────────────────── */
+/* Uses shared AppPage (.page-container) chrome — title/gutters match Projects/History/Billing */
 .film-studio-page {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  background: var(--bg-base);
   /* Prevent any child from causing horizontal scroll on mobile */
   overflow-x: hidden;
-  max-width: 100vw;
+  max-width: 100%;
 }
 
+.film-studio-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+  min-width: 0;
+}
+
+.film-studio-steps {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+/* Legacy sticky header kept inert — Studio now uses PageHeader inside AppPage */
 .film-studio-header {
-  background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(59,130,246,0.08));
-  border-bottom: 1px solid var(--border);
-  padding: 24px 32px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  backdrop-filter: blur(20px);
+  display: none;
 }
 
 .film-studio-header-content {
@@ -2959,10 +2961,10 @@ input[type='file']::file-selector-button:hover {
 /* ── Body & Panels ──────────────────────────────────────────── */
 .film-studio-body {
     flex: 1;
-    padding: 32px;
-    margin: 0 auto;
+    padding: 0;
+    margin: 0;
     width: 100%;
-    max-width: min(1200px, 100vw);
+    max-width: 100%;
     box-sizing: border-box;
   }
 
@@ -3680,27 +3682,14 @@ input[type='file']::file-selector-button:hover {
      mobile users with no sense of progress through the flow. */
   .film-step-indicator { display: none; }
   .film-step-indicator-mobile { display: block; }
-  /* Tablet (768–1024px): modest padding. Phones (≤768px) override to 0 below. */
-  .film-studio-body { padding: 16px; }
+  /* Body gutters come from AppPage; keep studio body flush inside the page container */
+  .film-studio-body { padding: 0; }
   .step-footer   { flex-direction: column; align-items: stretch; }
   .generation-summary { grid-template-columns: 1fr; }
 }
 
 /* ── 768px: mobile phones & tablets ───────────────────────── */
 @media (max-width: 768px) {
-  /* Header: must clear the fixed hamburger button (left:12px + 44px wide + 12px gap = 68px) */
-  .film-studio-header {
-    padding: max(12px, env(safe-area-inset-top)) max(120px, calc(env(safe-area-inset-right) + 108px)) 10px max(68px, calc(env(safe-area-inset-left) + 64px));
-  }
-
-  .film-studio-header-content {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    width: 100%;
-  }
-
   .film-step-indicator-mobile {
     display: block;
     width: 100%;
@@ -3716,20 +3705,15 @@ input[type='file']::file-selector-button:hover {
     background: linear-gradient(90deg, var(--brand-primary), var(--brand-light));
   }
 
-  /* Body: full-width edge-to-edge */
+  /* Body inherits AppPage gutters — no edge-to-edge squeeze */
   .film-studio-body {
-    padding: 0 0 32px 0;
+    padding: 0;
     max-width: 100%;
     width: 100%;
   }
 
-  /* Parent card for Project Configuration and all studio steps:
-     Flat 0 border-radius matching the header, with 16px breathing space from the sticky header */
   .film-step-panel {
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    margin-top: 16px;
+    margin-top: 0;
     width: 100%;
     max-width: 100%;
   }
@@ -3738,13 +3722,10 @@ input[type='file']::file-selector-button:hover {
     padding: 0 0 24px 0;
   }
 
-  /* The film-studio-brand icon sits left of the title — no overflow room.
-     On very small screens swap to a tight layout */
   .film-studio-brand {
     gap: 10px;
   }
 
-  /* Panel headers with 32px side padding */
   .step-panel-header {
     padding: 20px 16px 16px;
   }
@@ -4489,7 +4470,7 @@ input[type='file']::file-selector-button:hover {
   }
   .page-container {
     padding:
-      max(72px, calc(env(safe-area-inset-top, 0px) + 64px))
+      var(--chrome-top-offset)
       var(--page-gutter)
       max(32px, calc(env(safe-area-inset-bottom, 0px) + 24px))
       var(--page-gutter);
@@ -4497,35 +4478,41 @@ input[type='file']::file-selector-button:hover {
   .page-title { font-size: 26px; }
   .subheading { font-size: var(--text-sm); }
 
-  /* Film Studio: content BELOW chrome, full-width gutters (no side squeeze) */
-  .film-studio-header {
-    padding: var(--chrome-top-offset) var(--page-gutter) 12px;
-    gap: 8px;
-    z-index: 30;
-  }
-  .film-studio-header-content {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    width: 100%;
-  }
+  /* Film Studio: same AppPage chrome as Projects/History/Billing */
   .film-studio-body {
-    padding: 0 0 calc(24px + var(--bottom-nav-total)) 0;
+    padding: 0;
     max-width: 100%;
   }
+  .film-studio-meta {
+    margin: -8px 0 12px;
+  }
+  .film-studio-steps {
+    margin-bottom: 12px;
+  }
   .film-step-panel {
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    margin-top: 12px;
+    margin-top: 0;
   }
   .film-step-panel-inner { padding: 0 0 8px; }
   .step-panel-header {
-    padding: 16px var(--page-gutter) 14px;
+    padding: 16px;
   }
   .step-panel-header h2 { font-size: var(--text-lg); }
   .step-panel-header p { font-size: var(--text-sm); }
+
+  /* Card-internal padding (AppPage already provides --page-gutter) */
+  .characters-grid,
+  .concept-grid,
+  .screenplay-overview {
+    padding: 16px;
+  }
+  .generation-summary,
+  .synopsis-preview,
+  .generation-progress,
+  .chars-empty-hint,
+  .production-cost-note {
+    margin-left: 0;
+    margin-right: 0;
+  }
 
   .film-style-grid {
     display: grid !important;
@@ -4571,19 +4558,6 @@ input[type='file']::file-selector-button:hover {
     justify-content: center;
   }
 
-  .characters-grid,
-  .concept-grid,
-  .screenplay-overview {
-    padding: var(--page-gutter);
-  }
-  .generation-summary,
-  .synopsis-preview,
-  .generation-progress,
-  .chars-empty-hint,
-  .production-cost-note {
-    margin-left: var(--page-gutter);
-    margin-right: var(--page-gutter);
-  }
   .generation-summary { padding-left: 0; padding-right: 0; }
 
   .toast-container {
@@ -4597,11 +4571,8 @@ input[type='file']::file-selector-button:hover {
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
-  .film-studio-header {
-    padding: 16px 20px;
-  }
   .film-studio-body {
-    padding: 16px 20px 32px;
+    padding: 0;
   }
   .film-style-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4609,8 +4580,7 @@ input[type='file']::file-selector-button:hover {
 }
 
 @media (min-width: 1025px) {
-  .film-studio-header { padding: 20px 32px; }
-  .film-studio-body { padding: 28px 32px 48px; }
+  .film-studio-body { padding: 0; }
 }
 
 @media (max-width: 480px) {

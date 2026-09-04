@@ -10,6 +10,9 @@ import { getProject, createProject, updateProject } from '../api/projects';
 import { useScreenplaySocket } from '../hooks/useSocket';
 import useAppStore from '../store/useAppStore';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import { AppPage } from '../components/ui/AppPage';
+import { PageHeader } from '../components/ui/PageHeader';
+import { AppButton } from '../components/ui/AppButton';
 import InsufficientFunds from '../components/InsufficientFunds';
 import { estimateProduction, formatUsd, isInsufficientFunds, fundsError } from '../api/billing';
 
@@ -1223,58 +1226,47 @@ export default function FilmStudioPage() {
         : estimatedScenes);
 
   return (
-    <div className="film-studio-page">
-      {/* Header */}
-      <div className="film-studio-header">
-        <div className="film-studio-header-content">
-          <div className="film-studio-title-row">
-            <div className="film-studio-title-group">
-              <div className="film-studio-icon hidden sm:flex shrink-0">
-                <Clapperboard size={22} />
-              </div>
-              <div className="flex items-center gap-2 min-w-0">
-                <h1 className="film-studio-title">Film Studio</h1>
-                {activeProject && (
-                  <span className="film-studio-project-badge" title={activeProject.name}>
-                    <span className="film-studio-project-dot" aria-hidden="true" />
-                    <span>{activeProject.name}</span>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="film-studio-header-actions">
-              <button
-                type="button"
-                onClick={handleStartNewFilm}
-                className="film-studio-action-btn film-studio-action-btn--primary"
-                title="Start a new film"
-              >
-                <Plus size={13} />
-                <span className="hidden sm:inline">New Film</span>
-                <span className="sm:hidden">New</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate('/app/projects')}
-                className="film-studio-action-btn film-studio-action-btn--ghost"
-              >
-                <Folder size={13} />
-                <span className="hidden sm:inline">Switch Studio</span>
-                <span className="sm:hidden">Studios</span>
-              </button>
-            </div>
+    <AppPage className="film-studio-page">
+      <PageHeader
+        title="Film Studio"
+        description="Generate feature-length AI films from your imagination"
+        actions={
+          <div className="film-studio-header-actions">
+            <AppButton
+              icon={Plus}
+              size="sm"
+              className="btn-inline"
+              onClick={handleStartNewFilm}
+              title="Start a new film"
+            >
+              <span className="hidden sm:inline">New Film</span>
+              <span className="sm:hidden">New</span>
+            </AppButton>
+            <AppButton
+              icon={Folder}
+              variant="secondary"
+              size="sm"
+              className="btn-inline"
+              onClick={() => navigate('/app/projects')}
+            >
+              <span className="hidden sm:inline">Switch Studio</span>
+              <span className="sm:hidden">Studios</span>
+            </AppButton>
           </div>
+        }
+      />
 
-          <p className="film-studio-subtitle">
-            Generate feature-length AI films from your imagination
-          </p>
-
-          <div className="film-studio-steps">
-            <StepIndicator step={step} current={step} />
-          </div>
+      {activeProject && (
+        <div className="film-studio-meta">
+          <span className="film-studio-project-badge" title={activeProject.name}>
+            <span className="film-studio-project-dot" aria-hidden="true" />
+            <span>{activeProject.name}</span>
+          </span>
         </div>
+      )}
+
+      <div className="film-studio-steps">
+        <StepIndicator step={step} current={step} />
       </div>
 
       <div className="film-studio-body">
@@ -1781,6 +1773,6 @@ export default function FilmStudioPage() {
         detail={fundsDetail}
         onClose={() => setFundsOpen(false)}
       />
-    </div>
+    </AppPage>
   );
 }
