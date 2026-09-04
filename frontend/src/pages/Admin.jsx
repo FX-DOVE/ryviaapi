@@ -442,38 +442,37 @@ export default function Admin({ defaultTab = 'overview' }) {
       <PageHeader
         title="Command Center"
         description="Monitor GPU fleet, process queues, and system configuration."
-        actions={
-          <div className="segmented" role="tablist" aria-label="Admin sections">
-            <button
-              type="button"
-              role="tab"
-              className="segmented-option"
-              aria-pressed={activeTab === 'overview'}
-              onClick={() => setActiveTab('overview')}
-            >
-              System Overview
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className="segmented-option"
-              aria-pressed={activeTab === 'ai-connections'}
-              onClick={() => setActiveTab('ai-connections')}
-            >
-              AI Connections
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className="segmented-option"
-              aria-pressed={activeTab === 'studio-ops'}
-              onClick={() => setActiveTab('studio-ops')}
-            >
-              Studio Ops
-            </button>
-          </div>
-        }
       />
+
+      <div className="admin-tabs segmented mb-6 w-full min-w-0 -mx-0 overflow-x-auto" role="tablist" aria-label="Admin sections">
+        <button
+          type="button"
+          role="tab"
+          className="segmented-option"
+          aria-pressed={activeTab === 'overview'}
+          onClick={() => setActiveTab('overview')}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="segmented-option"
+          aria-pressed={activeTab === 'ai-connections'}
+          onClick={() => setActiveTab('ai-connections')}
+        >
+          AI
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="segmented-option"
+          aria-pressed={activeTab === 'studio-ops'}
+          onClick={() => setActiveTab('studio-ops')}
+        >
+          Studio Ops
+        </button>
+      </div>
 
       {activeTab === 'overview' && (
         <div className="flex flex-col gap-6">
@@ -630,167 +629,112 @@ export default function Admin({ defaultTab = 'overview' }) {
             </div>
           </div>
 
-          {/* ROW 3: 70/30 Ledger & User Management */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-            {/* Credit Ledger (70%) */}
-            <div className="lg:col-span-8 flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden h-full">
-              <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                  <CreditCard size={14} className="text-[var(--text-secondary)]" />
-                  Credit Ledger
-                </h2>
-              </div>
-
-              <div className="overflow-x-auto flex-1">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead>
-                    <tr className="border-b border-[var(--glass-border)] text-[var(--text-secondary)]">
-                      <th className="px-5 py-3 font-medium">Timestamp</th>
-                      <th className="px-5 py-3 font-medium">User</th>
-                      <th className="px-5 py-3 font-medium">Action</th>
-                      <th className="px-5 py-3 font-medium">Amount</th>
-                      <th className="px-5 py-3 font-medium w-full">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--glass-border)]">
-                    {ledgerLogs.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="px-5 py-12 text-center text-[var(--text-muted)]">
-                          No ledger transactions recorded.
-                        </td>
-                      </tr>
-                    ) : (
-                      ledgerLogs.map((log) => {
-                        const isPositive = ['addition', 'refund'].includes(log.type);
-                        const date = new Date(log.createdAt);
-
-                        return (
-                          <tr key={log._id} className="hover:bg-[var(--bg-raised)] transition-colors">
-                            <td className="px-5 py-3 text-xs text-[var(--text-muted)]">
-                              {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}
-                            </td>
-                            <td className="px-5 py-3">
-                              <div className="text-[var(--text-primary)] text-xs">{log.userId?.name || 'System'}</div>
-                              <div className="text-[10px] text-[var(--text-muted)]">{log.userId?.email || 'automated'}</div>
-                            </td>
-                            <td className="px-5 py-3">
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${
-                                log.type === 'addition' ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] text-[var(--accent-green)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]' :
-                                log.type === 'refund' ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]' :
-                                'bg-[var(--bg-overlay)] text-[var(--text-secondary)] border-[var(--glass-border)]'
-                              }`}>
-                                {log.type}
-                              </span>
-                            </td>
-                            <td className={`px-5 py-3 text-xs font-mono ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
-                              {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
-                            </td>
-                            <td className="px-5 py-3 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
-                              {log.reason}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+          {/* ROW 3: Credit Ledger — stacked cards on mobile, table from md+ */}
+          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <CreditCard size={14} className="text-[var(--text-secondary)]" />
+                Credit Ledger
+              </h2>
             </div>
 
-            {/* Promote User (30%) */}
-            <div className="lg:col-span-4 flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden h-full">
-              <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                  <UserPlus size={14} className="text-[var(--text-secondary)]" />
-                  User Management
-                </h2>
-              </div>
-
-              <div className="p-5 flex flex-col flex-1">
-                <p className="text-sm text-[var(--text-secondary)] mb-6">
-                  Promote a registered user to an Administrator account to grant them dashboard access.
-                </p>
-
-                <form onSubmit={(e) => handlePromote(e)} className="space-y-4">
-                  <div>
-                    <label htmlFor="promote-email" className="form-label text-xs">User email address</label>
-                    <div className="flex gap-2">
-                      <input
-                        id="promote-email"
-                        type="email"
-                        value={promoteEmail}
-                        onChange={(e) => setPromoteEmail(e.target.value)}
-                        placeholder="user@example.com"
-                        required
-                        className="form-input text-xs"
-                      />
-                      <AppButton type="submit" size="sm" disabled={promoting} className="shrink-0">
-                        {promoting ? 'Saving…' : 'Promote'}
-                      </AppButton>
-                    </div>
-                  </div>
-                </form>
-
-                {promoteMessage && (
-                  <div className={`mt-3 text-xs p-2.5 rounded-[var(--radius-md)] border ${
-                    promoteMessage.type === 'success'
-                      ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
-                      : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
-                  }`}>
-                    {promoteMessage.text}
-                  </div>
-                )}
-
-                {usersList.length > 0 && (
-                  <div className="mt-5 pt-4 border-t border-[var(--glass-border)]">
-                    <div className="text-xs font-semibold text-[var(--text-primary)] mb-2 flex items-center justify-between">
-                      <span>Registered Users</span>
-                      <span className="text-[10px] text-[var(--text-muted)] font-mono">{usersList.length} total</span>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto divide-y divide-[var(--glass-border)] -mx-2 px-2">
-                      {usersList.map((u) => (
-                        <div key={u._id} className="py-2 flex items-center justify-between text-xs gap-2">
-                          <div className="truncate flex-1">
-                            <div className="font-medium text-[var(--text-primary)] truncate">{u.name || 'User'}</div>
-                            <div className="text-[10px] text-[var(--text-muted)] truncate">{u.email}</div>
+            {/* Mobile stacked cards */}
+            <div className="md:hidden divide-y divide-[var(--glass-border)]">
+              {ledgerLogs.length === 0 ? (
+                <div className="px-5 py-12 text-center text-[var(--text-muted)] text-sm">
+                  No ledger transactions recorded.
+                </div>
+              ) : (
+                ledgerLogs.map((log) => {
+                  const isPositive = ['addition', 'refund'].includes(log.type);
+                  const date = new Date(log.createdAt);
+                  return (
+                    <div key={log._id} className="px-5 py-4 flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs text-[var(--text-muted)]">
+                            {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium border uppercase ${
-                              u.role === 'admin'
-                                ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]'
-                                : 'bg-[var(--bg-overlay)] text-[var(--text-muted)] border-[var(--glass-border)]'
-                            }`}>
-                              {u.role}
-                            </span>
-                            {u.role !== 'admin' ? (
-                              <button
-                                type="button"
-                                onClick={() => handlePromote(null, u.email)}
-                                disabled={promoting}
-                                className="text-[10px] text-[var(--brand-light)] hover:underline font-medium"
-                              >
-                                Make Admin
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleDemote(u.email)}
-                                disabled={promoting}
-                                className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent-red)] hover:underline"
-                              >
-                                Revoke
-                              </button>
-                            )}
-                          </div>
+                          <div className="text-sm text-[var(--text-primary)] truncate mt-0.5">{log.userId?.name || 'System'}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] truncate">{log.userId?.email || 'automated'}</div>
                         </div>
-                      ))}
+                        <div className={`text-sm font-mono shrink-0 ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
+                          {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${
+                          log.type === 'addition' ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] text-[var(--accent-green)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]' :
+                          log.type === 'refund' ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]' :
+                          'bg-[var(--bg-overlay)] text-[var(--text-secondary)] border-[var(--glass-border)]'
+                        }`}>
+                          {log.type}
+                        </span>
+                        {log.reason && (
+                          <span className="text-xs text-[var(--text-secondary)] break-words">{log.reason}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  );
+                })
+              )}
             </div>
 
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto flex-1">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-[var(--glass-border)] text-[var(--text-secondary)]">
+                    <th className="px-5 py-3 font-medium">Timestamp</th>
+                    <th className="px-5 py-3 font-medium">User</th>
+                    <th className="px-5 py-3 font-medium">Action</th>
+                    <th className="px-5 py-3 font-medium">Amount</th>
+                    <th className="px-5 py-3 font-medium w-full">Note</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--glass-border)]">
+                  {ledgerLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="px-5 py-12 text-center text-[var(--text-muted)]">
+                        No ledger transactions recorded.
+                      </td>
+                    </tr>
+                  ) : (
+                    ledgerLogs.map((log) => {
+                      const isPositive = ['addition', 'refund'].includes(log.type);
+                      const date = new Date(log.createdAt);
+
+                      return (
+                        <tr key={log._id} className="hover:bg-[var(--bg-raised)] transition-colors">
+                          <td className="px-5 py-3 text-xs text-[var(--text-muted)]">
+                            {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="text-[var(--text-primary)] text-xs">{log.userId?.name || 'System'}</div>
+                            <div className="text-[10px] text-[var(--text-muted)]">{log.userId?.email || 'automated'}</div>
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${
+                              log.type === 'addition' ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] text-[var(--accent-green)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]' :
+                              log.type === 'refund' ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]' :
+                              'bg-[var(--bg-overlay)] text-[var(--text-secondary)] border-[var(--glass-border)]'
+                            }`}>
+                              {log.type}
+                            </span>
+                          </td>
+                          <td className={`px-5 py-3 text-xs font-mono ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
+                            {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
+                            {log.reason}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
         </div>
@@ -800,7 +744,7 @@ export default function Admin({ defaultTab = 'overview' }) {
         <div className="flex flex-col gap-6">
 
           <div className="flex justify-end mb-2">
-            <AppButton variant="secondary" size="sm" icon={RefreshCw} onClick={handleTestAll}>
+            <AppButton variant="secondary" size="sm" icon={RefreshCw} onClick={handleTestAll} className="w-full sm:w-auto">
               Ping All Endpoints
             </AppButton>
           </div>
@@ -844,7 +788,7 @@ export default function Admin({ defaultTab = 'overview' }) {
 
                       <div className="border-b border-[var(--glass-border)] py-3">
                         <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Endpoint</span>
-                        <span className="text-sm text-[var(--text-primary)] font-mono truncate block">
+                        <span className="text-sm text-[var(--text-primary)] font-mono break-all block">
                           {shortEndpoint(provider.endpoint) || <span className="text-[var(--text-muted)] italic">Not configured</span>}
                         </span>
                       </div>
@@ -853,7 +797,7 @@ export default function Admin({ defaultTab = 'overview' }) {
                       {provider.editEndpoint && (
                         <div className="border-b border-[var(--glass-border)] py-3">
                           <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Edit Endpoint</span>
-                          <span className="text-sm text-[var(--text-primary)] font-mono truncate block">
+                          <span className="text-sm text-[var(--text-primary)] font-mono break-all block">
                             {shortEndpoint(provider.editEndpoint)}
                           </span>
                         </div>
@@ -907,6 +851,349 @@ export default function Admin({ defaultTab = 'overview' }) {
               );
             })}
           </div>
+        </div>
+      )}
+
+
+      {activeTab === 'studio-ops' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+          {/* Coupons */}
+          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <Ticket size={14} className="text-[var(--text-secondary)]" />
+                Coupons
+              </h2>
+            </div>
+            <div className="p-5 flex flex-col flex-1 gap-4">
+              <form onSubmit={handleCreateCoupon} className="flex flex-col gap-3">
+                <div>
+                  <label htmlFor="coupon-code" className="form-label text-xs">Code</label>
+                  <input
+                    id="coupon-code"
+                    type="text"
+                    value={couponForm.code}
+                    onChange={(e) => setCouponForm((f) => ({ ...f, code: e.target.value }))}
+                    placeholder="LAUNCH25"
+                    required
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="coupon-fixed" className="form-label text-xs">Fixed credit (USD)</label>
+                  <input
+                    id="coupon-fixed"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={couponForm.fixedCreditUsd}
+                    onChange={(e) => setCouponForm((f) => ({ ...f, fixedCreditUsd: e.target.value, percentOff: '' }))}
+                    placeholder="25"
+                    className="form-input text-xs w-full"
+                    disabled={!!couponForm.percentOff}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="coupon-percent" className="form-label text-xs">Percent off (optional)</label>
+                  <input
+                    id="coupon-percent"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={couponForm.percentOff}
+                    onChange={(e) => setCouponForm((f) => ({ ...f, percentOff: e.target.value, fixedCreditUsd: e.target.value ? '' : f.fixedCreditUsd }))}
+                    placeholder="Leave empty for fixed credit"
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="coupon-max" className="form-label text-xs">Max redemptions</label>
+                  <input
+                    id="coupon-max"
+                    type="number"
+                    min="1"
+                    value={couponForm.maxRedemptions}
+                    onChange={(e) => setCouponForm((f) => ({ ...f, maxRedemptions: e.target.value }))}
+                    placeholder="Unlimited"
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="coupon-expires" className="form-label text-xs">Expires at</label>
+                  <input
+                    id="coupon-expires"
+                    type="datetime-local"
+                    value={couponForm.expiresAt}
+                    onChange={(e) => setCouponForm((f) => ({ ...f, expiresAt: e.target.value }))}
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <AppButton type="submit" size="sm" disabled={couponBusy} className="w-full">
+                  {couponBusy ? 'Creating…' : 'Create coupon'}
+                </AppButton>
+              </form>
+
+              {couponMsg && (
+                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
+                  couponMsg.type === 'success'
+                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
+                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
+                }`}>
+                  {couponMsg.text}
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-[var(--glass-border)]">
+                <div className="text-xs font-semibold text-[var(--text-primary)] mb-2">Active coupons</div>
+                {couponsList.filter((c) => c.active !== false).length === 0 ? (
+                  <p className="text-xs text-[var(--text-muted)]">No active coupons.</p>
+                ) : (
+                  <ul className="divide-y divide-[var(--glass-border)] max-h-56 overflow-y-auto">
+                    {couponsList.filter((c) => c.active !== false).map((c) => (
+                      <li key={c._id || c.id || c.code} className="py-2.5 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-mono font-medium text-[var(--text-primary)] truncate">{c.code}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                            {c.percentOff != null && c.percentOff !== ''
+                              ? `${c.percentOff}% off`
+                              : `$${((c.fixedCreditCents != null ? c.fixedCreditCents : Math.round(Number(c.fixedCreditUsd || 0) * 100)) / 100).toFixed(2)} credit`}
+                            {c.maxRedemptions ? ` · max ${c.maxRedemptions}` : ''}
+                            {c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
+                          </div>
+                        </div>
+                        <AppButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={couponBusy}
+                          onClick={() => handleDisableCoupon(c._id || c.id)}
+                          className="shrink-0"
+                        >
+                          Disable
+                        </AppButton>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Grant credits */}
+          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <Gift size={14} className="text-[var(--text-secondary)]" />
+                Grant credits
+              </h2>
+            </div>
+            <div className="p-5 flex flex-col flex-1 gap-4">
+              <form onSubmit={handleGrantCredits} className="flex flex-col gap-3">
+                <div>
+                  <label htmlFor="grant-email" className="form-label text-xs">User email</label>
+                  <input
+                    id="grant-email"
+                    type="email"
+                    value={grantForm.email}
+                    onChange={(e) => setGrantForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="user@example.com"
+                    required={!grantForm.allUsers}
+                    disabled={grantForm.allUsers}
+                    className="form-input text-xs w-full disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="grant-amount" className="form-label text-xs">Amount (USD)</label>
+                  <input
+                    id="grant-amount"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={grantForm.amountUsd}
+                    onChange={(e) => setGrantForm((f) => ({ ...f, amountUsd: e.target.value }))}
+                    required
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="grant-reason" className="form-label text-xs">Reason</label>
+                  <input
+                    id="grant-reason"
+                    type="text"
+                    value={grantForm.reason}
+                    onChange={(e) => setGrantForm((f) => ({ ...f, reason: e.target.value }))}
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={grantForm.allUsers}
+                    onChange={(e) => setGrantForm((f) => ({ ...f, allUsers: e.target.checked }))}
+                    className="rounded border-[var(--glass-border)]"
+                  />
+                  Grant to all users
+                </label>
+                <AppButton type="submit" size="sm" disabled={grantBusy} className="w-full">
+                  {grantBusy ? 'Granting…' : 'Grant'}
+                </AppButton>
+              </form>
+
+              {grantMsg && (
+                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
+                  grantMsg.type === 'success'
+                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
+                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
+                }`}>
+                  {grantMsg.text}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bulk email */}
+          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden md:col-span-2 lg:col-span-1">
+            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <Mail size={14} className="text-[var(--text-secondary)]" />
+                Bulk email
+              </h2>
+            </div>
+            <div className="p-5 flex flex-col flex-1 gap-4">
+              <form onSubmit={handleBulkEmail} className="flex flex-col gap-3 flex-1">
+                <div>
+                  <label htmlFor="bulk-subject" className="form-label text-xs">Subject</label>
+                  <input
+                    id="bulk-subject"
+                    type="text"
+                    value={bulkForm.subject}
+                    onChange={(e) => setBulkForm((f) => ({ ...f, subject: e.target.value }))}
+                    required
+                    className="form-input text-xs w-full"
+                  />
+                </div>
+                <div className="flex flex-col flex-1">
+                  <label htmlFor="bulk-body" className="form-label text-xs">Body</label>
+                  <textarea
+                    id="bulk-body"
+                    value={bulkForm.text}
+                    onChange={(e) => setBulkForm((f) => ({ ...f, text: e.target.value }))}
+                    required
+                    rows={6}
+                    className="form-input text-xs w-full min-h-[120px] resize-y"
+                  />
+                </div>
+                <AppButton type="submit" size="sm" disabled={bulkBusy} className="w-full">
+                  {bulkBusy ? 'Sending…' : 'Send to all users'}
+                </AppButton>
+              </form>
+
+              {bulkMsg && (
+                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
+                  bulkMsg.type === 'success'
+                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
+                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
+                }`}>
+                  {bulkMsg.text}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* User Management */}
+          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden md:col-span-2 lg:col-span-3">
+            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <UserPlus size={14} className="text-[var(--text-secondary)]" />
+                User Management
+              </h2>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <p className="text-sm text-[var(--text-secondary)]">
+                Promote a registered user to an Administrator account to grant them dashboard access.
+              </p>
+
+              <form onSubmit={(e) => handlePromote(e)} className="flex flex-col gap-3">
+                <div>
+                  <label htmlFor="promote-email" className="form-label text-xs">User email address</label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      id="promote-email"
+                      type="email"
+                      value={promoteEmail}
+                      onChange={(e) => setPromoteEmail(e.target.value)}
+                      placeholder="user@example.com"
+                      required
+                      className="form-input text-xs w-full"
+                    />
+                    <AppButton type="submit" size="sm" disabled={promoting} className="w-full sm:w-auto shrink-0">
+                      {promoting ? 'Saving…' : 'Promote'}
+                    </AppButton>
+                  </div>
+                </div>
+              </form>
+
+              {promoteMessage && (
+                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
+                  promoteMessage.type === 'success'
+                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
+                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
+                }`}>
+                  {promoteMessage.text}
+                </div>
+              )}
+
+              {usersList.length > 0 && (
+                <div className="pt-3 border-t border-[var(--glass-border)]">
+                  <div className="text-xs font-semibold text-[var(--text-primary)] mb-2 flex items-center justify-between">
+                    <span>Registered Users</span>
+                    <span className="text-[10px] text-[var(--text-muted)] font-mono">{usersList.length} total</span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto divide-y divide-[var(--glass-border)]">
+                    {usersList.map((u) => (
+                      <div key={u._id} className="py-2.5 flex items-center justify-between text-xs gap-2">
+                        <div className="truncate flex-1 min-w-0">
+                          <div className="font-medium text-[var(--text-primary)] truncate">{u.name || 'User'}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] truncate">{u.email}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium border uppercase ${
+                            u.role === 'admin'
+                              ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]'
+                              : 'bg-[var(--bg-overlay)] text-[var(--text-muted)] border-[var(--glass-border)]'
+                          }`}>
+                            {u.role}
+                          </span>
+                          {u.role !== 'admin' ? (
+                            <button
+                              type="button"
+                              onClick={() => handlePromote(null, u.email)}
+                              disabled={promoting}
+                              className="text-[10px] text-[var(--brand-light)] hover:underline font-medium"
+                            >
+                              Make Admin
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleDemote(u.email)}
+                              disabled={promoting}
+                              className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent-red)] hover:underline"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
       )}
 
