@@ -20,6 +20,8 @@ import authRoutes       from './routes/auth.js';
 import projectRoutes    from './routes/projects.js';
 import screenplayRoutes from './routes/screenplays.js';
 import filmCharRoutes   from './routes/filmCharacters.js';
+import billingRoutes    from './routes/billing.js';
+import { paystackWebhook } from './controllers/billingController.js';
 // Providers are configured via .env file
 
 const app    = express();
@@ -41,6 +43,8 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:5199',
   'http://192.168.1.125:5173',   // LAN — phone on same WiFi
   'http://192.168.1.125:5199',   // LAN — phone on same WiFi
+  'https://app.reyvia.voiceforgeai.site',
+  'https://reyvia.voiceforgeai.site',
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
 ];
 app.use(cors({
@@ -48,12 +52,21 @@ app.use(cors({
     // allow requests with no origin (curl, Postman, server-to-server)
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (/^https:\/\/([a-z0-9-]+\.)?voiceforgeai\.site$/i.test(origin)) return cb(null, true);
     cb(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,
 }));
 app.use(compression());
 app.use(morgan('dev'));
+
+// Paystack needs the raw body for HMAC verification — register before json parser.
+app.post(
+  ['/api/billing/webhook', '/api/v1/billing/webhook'],
+  express.raw({ type: 'application/json' }),
+  paystackWebhook,
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/mock-storage', express.static(path.join(process.cwd(), 'storage', 'public', 'mock-storage')));
@@ -68,6 +81,7 @@ app.use('/api/v1/providers',        authMiddleware, providerRoutes);
 app.use('/api/v1/projects',         projectRoutes);
 app.use('/api/v1/screenplays',      authMiddleware, screenplayRoutes);
 app.use('/api/v1/film-characters',  authMiddleware, filmCharRoutes);
+app.use('/api/v1/billing',          authMiddleware, billingRoutes);
 
 // Legacy compatibility
 app.use('/api/auth',             authRoutes);
@@ -78,6 +92,7 @@ app.use('/api/providers',        authMiddleware, providerRoutes);
 app.use('/api/projects',         projectRoutes);
 app.use('/api/screenplays',      authMiddleware, screenplayRoutes);
 app.use('/api/film-characters',  authMiddleware, filmCharRoutes);
+app.use('/api/billing',          authMiddleware, billingRoutes);
 
 
 

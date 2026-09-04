@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { History, Cpu, CreditCard, Shield, LogOut, Clapperboard, Film, Video, X } from 'lucide-react';
+import { History, CreditCard, Shield, LogOut, Clapperboard, Film, Video, X } from 'lucide-react';
+import { getWallet, formatUsd } from '../api/billing';
 import { useFocusTrap } from '../hooks/useUiBehaviors';
 import useAppStore from '../store/useAppStore';
 
@@ -22,6 +23,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
   const asideRef = useRef(null);
+  const wallet = useAppStore((s) => s.wallet);
+  const setWallet = useAppStore((s) => s.setWallet);
 
   // Derive a stable boolean so the sidebar only re-renders when the live
   // state actually flips — covers both the jobs list and the open detail.
@@ -66,7 +69,10 @@ export default function Sidebar({ isOpen = false, onClose }) {
     };
 
     syncRole();
-  }, []);
+    getWallet()
+      .then(({ data }) => setWallet({ balanceUsd: data.balanceUsd || 0 }))
+      .catch(() => {});
+  }, [setWallet]);
 
   // Settings navigation — Admin-only items conditionally included
   const settingsNav = [
@@ -115,9 +121,14 @@ export default function Sidebar({ isOpen = false, onClose }) {
       </button>
 
       <div className="sidebar-logo">
-        <Clapperboard size={24} style={{ color: 'var(--brand-primary)' }} />
-        <h2>AI Film Studio</h2>
+        <Clapperboard size={24} style={{ color: 'var(--accent-gold)' }} />
+        <h2>Reyvia</h2>
       </div>
+
+      <button className="sidebar-wallet" onClick={() => { navigate('/app/billing'); onClose?.(); }}>
+        <span>Wallet</span>
+        <strong>{formatUsd(wallet?.balanceUsd || 0)}</strong>
+      </button>
 
       <nav className="sidebar-nav">
         <div className="sidebar-nav-group">

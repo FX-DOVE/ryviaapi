@@ -1,9 +1,10 @@
 import User from '../models/User.js';
 import Job  from '../models/Job.js';
+import { getWallet } from '../services/walletService.js';
 
 export async function getMe(req, res, next) {
   try {
-    const [user, stats] = await Promise.all([
+    const [user, stats, wallet] = await Promise.all([
       User.findById(req.user._id),
       Job.aggregate([
         { $match: { userId: req.user._id } },
@@ -18,12 +19,17 @@ export async function getMe(req, res, next) {
           },
         },
       ]),
+      getWallet(req.workspaceId || req.user.activeWorkspaceId),
     ]);
 
     const s = stats[0] || { total: 0, completed: 0, failed: 0, running: 0, totalSize: 0 };
 
     res.json({
       user,
+      wallet: {
+        balanceUsd: wallet.balanceUsd,
+        currency: 'USD',
+      },
       stats: {
         totalJobs:     s.total,
         completed:     s.completed,

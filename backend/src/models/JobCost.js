@@ -32,8 +32,19 @@ const jobCostSchema = new mongoose.Schema(
     },
     totalCostUsd: {
       type:    Number,
-      default: 0, // sum of GPU, API, and storage costs
+      default: 0, // billed USD shown internally after markup
     },
+    infraUsdCents:  { type: Number, default: 0 },
+    markupUsdCents: { type: Number, default: 0 },
+    billedUsdCents: { type: Number, default: 0 },
+    settled:        { type: Boolean, default: false },
+    lineItems: [{
+      kind:          { type: String },
+      label:         { type: String },
+      infraUsdCents: { type: Number, default: 0 },
+      meta:          { type: mongoose.Schema.Types.Mixed, default: {} },
+      at:            { type: Date, default: Date.now },
+    }],
   },
   { timestamps: true }
 );

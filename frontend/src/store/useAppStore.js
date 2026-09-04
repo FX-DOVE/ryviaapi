@@ -4,8 +4,10 @@ const useAppStore = create((set, get) => ({
   // ─── User / Stats ─────────────────────────────────────────────
   user:  null,
   stats: null,
+  wallet: { balanceUsd: 0 },
   setUser:  (user)  => set({ user }),
   setStats: (stats) => set({ stats }),
+  setWallet: (wallet) => set({ wallet: { balanceUsd: Number(wallet?.balanceUsd) || 0 } }),
 
   // ─── Jobs ──────────────────────────────────────────────────────
   jobs:       [],

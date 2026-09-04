@@ -96,7 +96,7 @@ export function parseAndRepairJson(rawText) {
  */
 export async function decomposeScript({
   rawScript, title, genre = 'drama', animationStyle = 'cinematic',
-  additionalNotes = '', jobId = '', screenplayScenes = null,
+  additionalNotes = '', jobId = '', screenplayScenes = null, worldDna = null,
 }) {
   console.log(`[CinematicDirector] Stage 1: Decomposing script for "${title}"...`);
 
@@ -123,6 +123,7 @@ If a scene has dialogue, each dialogue line should become its own beat. The beat
 FILM: "${title}"
 GENRE: ${genre}
 STYLE: ${animationStyle}
+${worldDna?.country_or_region ? `PHOTOGRAPHED WORLD (mandatory): ${worldDna.country_or_region}. Lighting: ${worldDna.lighting_style || ''}. Architecture: ${worldDna.architectural_and_environment_style || ''}. Place every scene in this real photographed country/setting — do not relocate the story to a generic set.` : ''}
 ${additionalNotes ? `DIRECTOR'S NOTES: ${additionalNotes}` : ''}
 
 RAW SCRIPT:

@@ -25,7 +25,7 @@ const workspaceSchema = new mongoose.Schema(
     ],
     credits: {
       type:    Number,
-      default: 1000, // starting credits
+      default: 0, // USD cents of usable studio balance
       min:     0,
     },
     billingPlan: {

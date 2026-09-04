@@ -109,6 +109,28 @@ export async function processDirectingStep(jobId) {
     throw new Error(`[WorkerSteps] Job ${jobId} has no script, prompt or screenplay to direct`);
   }
 
+  // Read uploaded character photographs BEFORE directing so locations, country,
+  // architecture, and lighting are locked to the real world in the photos.
+  let worldDna = job.visualDna || null;
+  try {
+    const {
+      buildWorldDnaForJob,
+      formatWorldDnaForDirector,
+    } = await import('../services/characterReferenceService.js');
+    const built = await buildWorldDnaForJob(job);
+    if (built.worldDna) {
+      worldDna = built.worldDna;
+      await Job.findByIdAndUpdate(jobId, { visualDna: worldDna });
+      await logInfo(
+        jobId,
+        `🌍 World DNA from reference photos: ${worldDna.country_or_region} · ${worldDna.lighting_style}`,
+      );
+      directorNotes = [directorNotes, formatWorldDnaForDirector(worldDna)].filter(Boolean).join('\n\n');
+    }
+  } catch (visErr) {
+    console.warn(`[WorkerSteps] Pre-direct vision pass skipped: ${visErr.message}`);
+  }
+
   // Stage 1: Decompose script into director plan
   let directorPlan = await decomposeScript({
     rawScript: sourceScript,
@@ -118,6 +140,7 @@ export async function processDirectingStep(jobId) {
     additionalNotes: directorNotes,
     jobId,
     screenplayScenes, // pass approved scenes for dialogue reconciliation
+    worldDna,
   });
 
   // Stage 4: Plan generation strategies for each beat
@@ -688,6 +711,16 @@ export async function processUploadStep(jobId) {
   });
 
   await logInfo(jobId, `🎬 Film complete! URL: ${finalVideoUrl}`);
+
+  try {
+    const { settleJobBilling } = await import('../services/costTracker.js');
+    const settled = await settleJobBilling(jobId);
+    if (settled?.billedUsd) {
+      await logInfo(jobId, `Production charge applied.`);
+    }
+  } catch (billErr) {
+    console.error(`[WorkerSteps] Billing settlement failed for ${jobId}: ${billErr.message}`);
+  }
 
   // Update project memory
   if (job.projectId) {

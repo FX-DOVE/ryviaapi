@@ -83,9 +83,12 @@ const jobSchema = new mongoose.Schema(
     duration:        { type: Number, default: null },   // seconds
     fileSize:        { type: Number, default: null },   // bytes
 
-    // Cost tracking
+    // Cost tracking — public fields are billed USD (markup already included).
     estimatedCost:   { type: Number, default: 0 },
     actualCost:      { type: Number, default: 0 },
+
+    // Characters attached to this production (uploaded reference photos live here)
+    filmCharacterIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FilmCharacter' }],
 
     input:           { type: jobInputSchema, default: () => ({}) },
 

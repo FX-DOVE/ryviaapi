@@ -46,6 +46,9 @@ const filmCharacterSchema = new mongoose.Schema(
     referenceImageUrl: { type: String, default: null },
     referenceImageKey: { type: String, default: null },
 
+    // Multimodal vision analysis of the uploaded photo (face, world, lighting)
+    visualAnalysis: { type: mongoose.Schema.Types.Mixed, default: null },
+
     // Voice settings (ElevenLabs)
     voiceId:      { type: String, default: null },  // ElevenLabs voice ID
     voiceName:    { type: String, default: '' },    // Human-readable label

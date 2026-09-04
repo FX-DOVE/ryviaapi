@@ -166,10 +166,36 @@ router.post('/:id/reference-image', upload.single('file'), async (req, res, next
     if (!req.file) return res.status(400).json({ error: 'No image file provided' });
 
     const cloudKey = `workspaces/${req.workspaceId}/characters/${character._id}/reference.jpg`;
-    const cloudUrl = await uploadToCloud(req.file.path, cloudKey, 'image/jpeg');
+    const localPath = req.file.path;
 
-    // Cleanup temp upload
-    fs.unlink(req.file.path, () => {});
+    try {
+      const { analyzeCharacterReferenceImage } = await import('../services/characterVisionService.js');
+      const analysis = await analyzeCharacterReferenceImage({
+        imagePathOrUrl: localPath,
+        characterName: character.name,
+        role: character.role,
+        physicalDescription: character.physicalDescription,
+        backstory: character.backstory,
+      });
+      character.visualAnalysis = analysis;
+      const appear = analysis?.character_appearance || {};
+      if (!character.ethnicity && appear.ethnicity) character.ethnicity = appear.ethnicity;
+      if (!character.physicalDescription && (appear.facial_structure || appear.hair)) {
+        character.physicalDescription = [
+          appear.ethnicity,
+          appear.age ? `about ${appear.age}` : '',
+          appear.facial_structure,
+          appear.hair,
+          appear.eyes,
+          appear.body_build,
+        ].filter(Boolean).join(', ');
+      }
+    } catch (visErr) {
+      console.warn(`[FilmCharacters] Vision analysis skipped: ${visErr.message}`);
+    }
+
+    const cloudUrl = await uploadToCloud(localPath, cloudKey, 'image/jpeg');
+    fs.unlink(localPath, () => {});
 
     character.referenceImageUrl = cloudUrl;
     character.referenceImageKey = cloudKey;

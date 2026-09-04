@@ -569,7 +569,7 @@ export default function Admin({ defaultTab = 'overview' }) {
                               </span>
                             </td>
                             <td className={`px-5 py-3 text-xs font-mono ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
-                              {isPositive ? '+' : '-'}{log.credits}
+                              {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
                             </td>
                             <td className="px-5 py-3 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
                               {log.reason}

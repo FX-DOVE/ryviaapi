@@ -1,10 +1,11 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
 import useAppStore from '../store/useAppStore';
 import { CheckCircle, XCircle, Info, Menu } from 'lucide-react';
 import { useBodyScrollLock, useEscapeKey } from '../hooks/useUiBehaviors';
+import { formatUsd } from '../api/billing';
 
 function Toasts() {
   const { toasts, removeToast } = useAppStore();
@@ -25,6 +26,8 @@ function Toasts() {
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const hamburgerRef = useRef(null);
+  const navigate = useNavigate();
+  const wallet = useAppStore((s) => s.wallet);
 
   const openSidebar = useCallback(() => setSidebarOpen(true), []);
   const closeSidebar = useCallback(() => {
@@ -61,6 +64,14 @@ export default function Layout() {
         aria-controls="app-sidebar"
       >
         <Menu size={22} />
+      </button>
+
+      <button
+        className="mobile-wallet-chip"
+        onClick={() => navigate('/app/billing')}
+        aria-label="Open wallet"
+      >
+        {formatUsd(wallet?.balanceUsd || 0)}
       </button>
 
       {/* Backdrop overlay — closes sidebar when clicked */}

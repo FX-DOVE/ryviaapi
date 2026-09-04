@@ -99,7 +99,7 @@ export default function Login() {
 
       <div className="text-center mt-8 pt-6 border-t border-[var(--border-subtle)]">
         <p className="text-sm text-[var(--text-secondary)]">
-          New to AI Film Studio?{' '}
+          New to Reyvia?{' '}
           <Link to="/register" className="text-[var(--text-primary)] font-semibold hover:text-[var(--brand-light)] transition-colors underline decoration-[var(--border-subtle)] hover:decoration-[var(--brand-light)] underline-offset-4">
             Create an account
           </Link>

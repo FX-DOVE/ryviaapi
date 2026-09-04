@@ -12,6 +12,8 @@ import { startJobPipeline } from '../services/executionEngine.js';
 import { createJobDirs, deleteJobFiles } from '../services/storageService.js';
 import { setJobSignal, clearJobSignal } from '../services/jobControlService.js';
 import { JOB_STATUS, SCENE_STATUS, charLockDir, envLockDir, sceneImgDir, sceneVidDir, segmentDir } from '../config/constants.js';
+import { assertCanAfford, estimateJobBilledUsdFromInput, reserveEstimateOnJob } from '../services/walletService.js';
+import FilmCharacter from '../models/FilmCharacter.js';
 
 
 // ─── CREATE JOB ──────────────────────────────────────────────────────────────
@@ -63,6 +65,14 @@ export async function createJob(req, res, next) {
       return res.status(403).json({ error: 'Access denied: user is not a member of this workspace' });
     }
 
+    const characterCount = await FilmCharacter.countDocuments({ workspaceId });
+    const estimatedUsd = estimateJobBilledUsdFromInput({
+      targetDurationMinutes: 3,
+      characterCount,
+      hasScriptStep: true,
+    });
+    await assertCanAfford(workspaceId, estimatedUsd, 'production');
+
     // Create job document
     const job = await Job.create({
       userId,
@@ -83,6 +93,7 @@ export async function createJob(req, res, next) {
     });
 
     const jobId = String(job._id);
+    await reserveEstimateOnJob(job, estimatedUsd);
 
     // Move uploaded files to job-specific input dir
     await createJobDirs(jobId);
@@ -372,6 +383,14 @@ export async function resumeJob(req, res, next) {
     job.status = JOB_STATUS.QUEUED;
     await job.save();
 
+    const estimatedUsd = job.estimatedCost || estimateJobBilledUsdFromInput({
+      targetDurationMinutes: job.targetDurationMinutes || 3,
+      sceneCount: job.totalScenes,
+      characterCount: (job.filmCharacterIds || []).length,
+      hasScriptStep: !job.screenplayId,
+    });
+    await assertCanAfford(job.workspaceId, estimatedUsd, 'production');
+
     await startJobPipeline(String(job._id));
 
     res.json({ message: 'Job resumed successfully', status: JOB_STATUS.QUEUED });
@@ -400,6 +419,14 @@ export async function retryJob(req, res, next) {
     job.retryCount += 1;
     job.status = JOB_STATUS.QUEUED;
     await job.save();
+
+    const estimatedUsd = job.estimatedCost || estimateJobBilledUsdFromInput({
+      targetDurationMinutes: job.targetDurationMinutes || 3,
+      sceneCount: job.totalScenes,
+      characterCount: (job.filmCharacterIds || []).length,
+      hasScriptStep: !job.screenplayId,
+    });
+    await assertCanAfford(job.workspaceId, estimatedUsd, 'production');
 
     await clearJobSignal(job._id);
     await startJobPipeline(String(job._id));

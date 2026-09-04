@@ -25,6 +25,13 @@ const GEMINI_BASE_URL = (process.env.GEMINI_BASE_URL || 'https://generativelangu
  * @param {string} imagePathOrUrl
  * @returns {Promise<{ base64DataUri: string, mimeType: string, buffer: Buffer }>}
  */
+export async function persistImageToPath(imagePathOrUrl, destPath) {
+  const { buffer } = await resolveImageBufferAndDataUri(imagePathOrUrl);
+  await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+  await fs.promises.writeFile(destPath, buffer);
+  return destPath;
+}
+
 export async function resolveImageBufferAndDataUri(imagePathOrUrl) {
   if (!imagePathOrUrl) throw new Error('No image path or URL provided');
 
@@ -189,6 +196,14 @@ Provide your analysis in STRICT JSON format with the following keys:
 
     const parsed = JSON.parse(cleanJson);
     console.log(`[CharacterVision] ✅ Visual DNA extracted for "${characterName}": Country/Region: ${parsed.world_and_setting_dna?.country_or_region || 'Detected'}`);
+    try {
+      const { recordLlmCall } = await import('./costTracker.js');
+      await recordLlmCall({
+        purpose: 'character-vision',
+        charCount: promptText.length + rawContent.length,
+        provider: 'gemini-vision',
+      });
+    } catch { /* no billing context outside a job */ }
     return parsed;
   } catch (err) {
     console.error(`[CharacterVision] Warning: Gemini vision analysis failed for "${characterName}": ${err.message}`);
@@ -312,6 +327,7 @@ function getFallbackAnalysis(characterName, role, physicalDescription) {
 
 export default {
   resolveImageBufferAndDataUri,
+  persistImageToPath,
   analyzeCharacterReferenceImage,
   synthesizeWorldContinuity,
   buildPromptForCharacterWithoutReference,

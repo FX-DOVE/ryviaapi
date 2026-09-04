@@ -103,14 +103,14 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   if (uploadedRef) {
     const isHttp = typeof uploadedRef === 'string' && /^https?:\/\//i.test(uploadedRef);
     const isLocalFile = typeof uploadedRef === 'string' && !isHttp && fs.existsSync(uploadedRef);
+    const isData = typeof uploadedRef === 'string' && uploadedRef.startsWith('data:');
 
-    if (isHttp || isLocalFile) {
+    if (isHttp || isLocalFile || isData) {
       console.log(
-        `[ConsistencyLock] 📸 Phase 1/4: Reference image received for "${character.name}" `
-        + `(${isHttp ? 'URL' : 'local file'}: ${uploadedRef.slice(0, 80)})`,
+        `[ConsistencyLock] 📸 Identity lock: using uploaded photograph for "${character.name}" `
+        + `(${isHttp ? 'URL' : isData ? 'data-uri' : 'local file'}: ${String(uploadedRef).slice(0, 80)})`,
       );
 
-      // Perform / retrieve multimodal vision analysis from Gemini if not already analyzed
       if (!visualAnalysis) {
         try {
           const { analyzeCharacterReferenceImage } = await import('./characterVisionService.js');
@@ -126,33 +126,20 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
         }
       }
 
-      // Build edit instruction using reasoning LLM's deep visual analysis
-      const editInstruction = visualAnalysis?.edit_locking_prompt || [
-        'Keep this exact person from the reference photo — identical face, facial structure, skin tone, hair, eyes, and body build.',
-        'Preserve natural human skin texture with real skin pores, fine lines, subtle blemishes, and authentic human complexion.',
-        'Do NOT airbrush, do NOT smooth skin, do NOT make skin look like plastic, porcelain, wax, or CGI.',
-        'Render as an authentic 35mm film photograph with natural ambient lighting and subtle film grain.',
-        character.clothingDefault ? `Ensure they are wearing: ${character.clothingDefault}.` : '',
-        'Remove any cartoonish, AI-smoothed, or synthetic sheen.',
-      ].filter(Boolean).join(' ');
-
+      // The uploaded photo IS the character. Persist it as the lock sheet so
+      // later Qwen-Edit / LTX calls condition on the real person, not a T2I stand-in.
       try {
-        console.log(`[ConsistencyLock] 📸 Phase 2/4: Encoding reference image for "${character.name}" → base64...`);
-        console.log(`[ConsistencyLock] 📸 Phase 3/4: Sending reference to Qwen-Image-Edit (Image-to-Image) for "${character.name}"...`);
-        await images.edit([uploadedRef], editInstruction, refImagePath, {
-          negative_prompt: REALISM_NEGATIVE_PROMPT,
-          num_inference_steps: 50,
-        });
+        const { persistImageToPath } = await import('./characterVisionService.js');
+        await persistImageToPath(uploadedRef, refImagePath);
         referenceUsed = true;
-        console.log(`[ConsistencyLock] 📸 Phase 4/4: ✅ img2img complete for "${character.name}": ${refImagePath}`);
+        console.log(`[ConsistencyLock] ✅ Identity photograph locked for "${character.name}": ${refImagePath}`);
       } catch (err) {
         console.error(
-          `[ConsistencyLock] ❌ Reference image FAILED for "${character.name}": ${err.message}\n`
-          + '  → Cause: the uploaded image could not be processed by the image-to-image endpoint.\n',
+          `[ConsistencyLock] ❌ Could not persist reference photo for "${character.name}": ${err.message}`,
         );
         throw new Error(
-          `Reference image for character "${character.name}" failed to process via image-to-image: ${err.message}. `
-          + 'Please re-upload the reference photo in the Film Characters panel and retry.',
+          `Reference image for character "${character.name}" could not be saved: ${err.message}. `
+          + 'Please re-upload the reference photo and retry.',
         );
       }
     } else {
@@ -188,7 +175,7 @@ export async function createCharacterLock(character, animationStyle = 'cinematic
   }
 
   // Build the text-based lock prompt (injected into every subsequent scene/keyframe)
-  const lockPrompt = buildCharacterLockPrompt(character, animationStyle);
+  const lockPrompt = buildCharacterLockPrompt(character, animationStyle, visualAnalysis, worldDna);
 
   return {
     lockPrompt,
@@ -204,13 +191,28 @@ export { REALISM_NEGATIVE_PROMPT };
 /**
  * Build a text-based character lock prompt from character data.
  */
-export function buildCharacterLockPrompt(character, animationStyle = 'cinematic') {
+export function buildCharacterLockPrompt(character, animationStyle = 'cinematic', visualAnalysis = null, worldDna = null) {
   const parts = [];
 
   parts.push(`[CHARACTER LOCK: ${character.name}]`);
 
+  const appearance = visualAnalysis?.character_appearance;
+  if (appearance) {
+    parts.push(`This is a real photographed person — keep IDENTICAL identity.`);
+    if (appearance.ethnicity) parts.push(appearance.ethnicity);
+    if (appearance.facial_structure) parts.push(appearance.facial_structure);
+    if (appearance.eyes) parts.push(appearance.eyes);
+    if (appearance.hair) parts.push(appearance.hair);
+    if (appearance.age) parts.push(`Age ${appearance.age}`);
+    if (appearance.body_build) parts.push(appearance.body_build);
+  }
+
   if (character.physicalDescription) {
     parts.push(character.physicalDescription);
+  }
+
+  if (visualAnalysis?.wardrobe_aesthetic?.outfit_style) {
+    parts.push(`Wardrobe: ${visualAnalysis.wardrobe_aesthetic.outfit_style}`);
   }
 
   if (character.clothingDefault) {
@@ -233,7 +235,13 @@ export function buildCharacterLockPrompt(character, animationStyle = 'cinematic'
   };
 
   parts.push(styleHints[animationStyle] || '35mm film photograph, natural human skin with visible pores, realistic authentic complexion, unretouched');
-  parts.push('IDENTICAL appearance in every single frame — same face, same skin tone, same body, same features, same ethnicity');
+
+  const dna = worldDna || visualAnalysis?.world_and_setting_dna;
+  const cinema = visualAnalysis?.cinematography_dna;
+  if (dna?.country_or_region) parts.push(`Photographed world: ${dna.country_or_region}`);
+  if (cinema?.lighting_style) parts.push(`Lighting: ${cinema.lighting_style}`);
+
+  parts.push('IDENTICAL appearance in every single frame — same face, same skin tone, same body, same features, same ethnicity. Do not invent a different person.');
 
   return parts.join(', ') + '.';
 }

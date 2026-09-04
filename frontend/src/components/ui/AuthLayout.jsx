@@ -14,17 +14,16 @@ export function AuthLayout({ children, title, subtitle }) {
         <div className="relative z-10 w-full max-w-xl mx-auto">
           <div className="flex items-center gap-3 mb-10 opacity-90">
             <Clapperboard size={28} className="text-[var(--brand-light)]" />
-            <h2 className="font-display font-bold text-xl tracking-wide text-white uppercase opacity-80">AI Film Studio</h2>
+            <h2 className="font-display font-bold text-xl tracking-wide text-white uppercase opacity-80">Reyvia</h2>
           </div>
 
           <h1 className="text-5xl font-extrabold text-white mb-6 leading-tight tracking-tight">
-            Turn ideas into <br />
-            <span className="bg-gradient-to-r from-[var(--brand-light)] to-[var(--accent-blue)] bg-clip-text text-transparent">cinematic videos</span><br />
-            powered by AI.
+            Original ideas.<br />
+            <span className="bg-gradient-to-r from-[var(--accent-gold)] to-[var(--brand-light)] bg-clip-text text-transparent">Cinema on demand.</span>
           </h1>
 
           <p className="text-[var(--text-secondary)] text-lg mb-12 max-w-[30rem] leading-relaxed">
-            Create stories, generate scenes, maintain characters, and render 4K movies in one seamless professional workspace.
+            Write the story, lock the faces from photographs, and render a finished film in one studio.
           </p>
 
           <div className="space-y-10">
@@ -68,7 +67,7 @@ export function AuthLayout({ children, title, subtitle }) {
           {/* Mobile Logo */}
           <div className="flex lg:hidden items-center justify-center gap-3 mb-10">
             <Clapperboard size={32} className="text-[var(--brand-light)]" />
-            <h2 className="font-display font-bold text-2xl">AI Film Studio</h2>
+            <h2 className="font-display font-bold text-2xl">Reyvia</h2>
           </div>
 
           <div className="card p-5 sm:p-8 shadow-2xl border-[var(--border-subtle)] bg-[var(--bg-surface)]">

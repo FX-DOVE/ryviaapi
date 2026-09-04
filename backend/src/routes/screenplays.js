@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Screenplay from '../models/Screenplay.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 import Job from '../models/Job.js';
@@ -117,6 +118,10 @@ router.post('/generate', async (req, res, next) => {
 
     if (!title) return res.status(400).json({ error: 'Film title is required' });
     if (!synopsis) return res.status(400).json({ error: 'Synopsis is required' });
+
+    const { assertCanAfford, estimateScreenplayBilledUsd } = await import('../services/walletService.js');
+    const scriptEstimate = estimateScreenplayBilledUsd(parseInt(targetDurationMinutes) || 90);
+    await assertCanAfford(req.workspaceId, scriptEstimate, 'screenplay');
 
     console.log(`[ScreenplayRoute] Generating screenplay for "${title}"...`);
 
@@ -305,6 +310,15 @@ router.post('/:id/produce', async (req, res, next) => {
       ...projectCharIds.map(String)
     ])).map(id => new mongoose.Types.ObjectId(id));
 
+    const { assertCanAfford, estimateJobBilledUsdFromInput, reserveEstimateOnJob } = await import('../services/walletService.js');
+    const estimatedUsd = estimateJobBilledUsdFromInput({
+      targetDurationMinutes: screenplay.targetDurationMinutes || 3,
+      sceneCount: screenplay.totalScenes,
+      characterCount: combinedCharIds.length,
+      hasScriptStep: false,
+    });
+    await assertCanAfford(req.workspaceId, estimatedUsd, 'production');
+
     // Create the production Job
     const job = new Job({
       userId: req.userId,
@@ -331,6 +345,7 @@ router.post('/:id/produce', async (req, res, next) => {
       status: 'queued',
     });
     await job.save();
+    await reserveEstimateOnJob(job, estimatedUsd);
 
     // Scene documents are NOT created here. The directing step is the single
     // writer of Scene documents (it starts with Scene.deleteMany), and it now

@@ -33,6 +33,7 @@ temp/
 backend/temp/
 dump.rdb
 *.rdb
+*.bak
 *.zip
 redis.zip
 redis5.zip

@@ -18,6 +18,11 @@ import {
   processUploadStep,
   processNotificationStep,
 } from './workerSteps.js';
+import { runWithJobBilling } from '../services/costTracker.js';
+
+async function billed(jobId, fn) {
+  return runWithJobBilling(jobId, fn);
+}
 
 import { WORKER_SETTINGS } from '../queues/queueManager.js';
 
@@ -53,7 +58,7 @@ export async function startWorkerCluster() {
     'scriptQueue',
     async (job) => {
       console.log(`[ScriptWorker] Processing job ${job.data.jobId}`);
-      await processScriptStep(job.data.jobId);
+      await billed(job.data.jobId, () => processScriptStep(job.data.jobId));
     },
     { connection, concurrency: 5, settings: WORKER_SETTINGS }
   );
@@ -63,7 +68,7 @@ export async function startWorkerCluster() {
     'directingQueue',
     async (job) => {
       console.log(`[DirectingWorker] Processing job ${job.data.jobId}`);
-      await processDirectingStep(job.data.jobId);
+      await billed(job.data.jobId, () => processDirectingStep(job.data.jobId));
     },
     { connection, concurrency: 2, lockDuration: DIRECTING_LOCK_MS, lockRenewTime: 30000, settings: WORKER_SETTINGS }
   );
@@ -73,7 +78,7 @@ export async function startWorkerCluster() {
     'lockingQueue',
     async (job) => {
       console.log(`[LockingWorker] Processing job ${job.data.jobId}`);
-      await processLockStep(job.data.jobId);
+      await billed(job.data.jobId, () => processLockStep(job.data.jobId));
     },
     { ...GPU_WORKER_OPTS, lockDuration: LOCKING_LOCK_MS }
   );
@@ -83,7 +88,7 @@ export async function startWorkerCluster() {
     'segmentQueue',
     async (job) => {
       console.log(`[SegmentWorker] Processing job ${job.data.jobId}`);
-      await processSegmentStep(job.data.jobId);
+      await billed(job.data.jobId, () => processSegmentStep(job.data.jobId));
     },
     { ...GPU_WORKER_OPTS, lockDuration: SEGMENT_LOCK_MS }
   );
@@ -93,7 +98,7 @@ export async function startWorkerCluster() {
     'audioQueue',
     async (job) => {
       console.log(`[AudioWorker] Processing job ${job.data.jobId}`);
-      await processAudioStep(job.data.jobId);
+      await billed(job.data.jobId, () => processAudioStep(job.data.jobId));
     },
     { connection, concurrency: 3, settings: WORKER_SETTINGS }
   );
@@ -103,7 +108,7 @@ export async function startWorkerCluster() {
     'promptQueue',
     async (job) => {
       console.log(`[PromptWorker] Processing job ${job.data.jobId}`);
-      await processPromptStep(job.data.jobId);
+      await billed(job.data.jobId, () => processPromptStep(job.data.jobId));
     },
     { connection, concurrency: 5, settings: WORKER_SETTINGS }
   );
@@ -113,7 +118,7 @@ export async function startWorkerCluster() {
     'renderingQueue',
     async (job) => {
       console.log(`[RenderingWorker] Processing job ${job.data.jobId}`);
-      await processRenderingStep(job.data.jobId);
+      await billed(job.data.jobId, () => processRenderingStep(job.data.jobId));
     },
     { 
       connection, 
@@ -128,7 +133,7 @@ export async function startWorkerCluster() {
     'uploadQueue',
     async (job) => {
       console.log(`[UploadWorker] Uploading assets for job ${job.data.jobId}`);
-      await processUploadStep(job.data.jobId);
+      await billed(job.data.jobId, () => processUploadStep(job.data.jobId));
     },
     { connection, concurrency: 3, settings: WORKER_SETTINGS }
   );

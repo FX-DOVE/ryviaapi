@@ -138,11 +138,15 @@ function existingPath(candidate) {
  * @returns {Promise<string>} keyframePath
  */
 async function makeKeyframe({ imagePrompt, keyframePath, plate, characterRefs = [], label }) {
+  // Character identity photos go first — Qwen-Image-Edit inherits the first
+  // reference's face. The previous-frame plate follows for location continuity.
   const refs = [];
-  if (plate) refs.push(plate);
   for (const ref of characterRefs) {
     if (refs.length >= MAX_EDIT_REFERENCES) break;
-    if (!refs.includes(ref)) refs.push(ref);
+    if (ref && !refs.includes(ref)) refs.push(ref);
+  }
+  if (plate && refs.length < MAX_EDIT_REFERENCES && !refs.includes(plate)) {
+    refs.push(plate);
   }
 
   const editOptions = {

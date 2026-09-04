@@ -187,6 +187,14 @@ export async function generateWithFallback(options = {}, ...rest) {
       console.log(
         `[ReasoningProvider] ${transport.id} ok in ${elapsed()}s, ${text.length} chars`,
       );
+      try {
+        const { recordLlmCall } = await import('../services/costTracker.js');
+        await recordLlmCall({
+          purpose,
+          charCount: (systemPrompt?.length || 0) + (userPrompt?.length || 0) + text.length,
+          provider: transport.id,
+        });
+      } catch { /* billing context may be absent outside a job */ }
       return { text, providerUsed: transport.id, model: transport.model };
     } catch (err) {
       const detail = err.name === 'TimeoutError' || err.name === 'AbortError'

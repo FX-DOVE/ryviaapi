@@ -10,6 +10,8 @@ import { getProject, createProject, updateProject } from '../api/projects';
 import { useScreenplaySocket } from '../hooks/useSocket';
 import useAppStore from '../store/useAppStore';
 import { useConfirm } from '../components/ui/ConfirmDialog';
+import InsufficientFunds from '../components/InsufficientFunds';
+import { estimateProduction, formatUsd, isInsufficientFunds, fundsError } from '../api/billing';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const VIDEO_TYPES = [
@@ -147,20 +149,24 @@ function CharacterEditor({ character, onSave, onCancel }) {
         </div>
 
         <div className="char-editor-body">
-          <div className="editor-row items-center">
-            <div className="editor-field flex-none text-center">
-              <div className="w-20 h-20 rounded-lg bg-[var(--bg-elevated)] border border-dashed border-[var(--border-default)] flex items-center justify-center overflow-hidden cursor-pointer relative"
-                onClick={() => document.getElementById('char-img-upload').click()}>
-                {previewImage ? (
-                  <img src={previewImage} className="w-full h-full object-cover" alt="Preview" />
-                ) : (
-                  <Camera className="opacity-50 text-2xl" size={24} />
-                )}
+          <button
+            type="button"
+            className="char-photo-drop"
+            onClick={() => document.getElementById('char-img-upload').click()}
+          >
+            {previewImage ? (
+              <img src={previewImage} alt="Character reference" />
+            ) : (
+              <div className="char-photo-empty">
+                <Camera size={28} />
+                <strong>Add a reference photograph</strong>
+                <span>This photo is the actor. We read face, location, and lighting from it — we will not invent a different person.</span>
               </div>
-              <input type="file" id="char-img-upload" hidden accept="image/*" onChange={handleImageUpload} />
-              <label className="text-[10px] block mt-1 text-[var(--text-muted)]">Photo (Opt)</label>
-            </div>
-            
+            )}
+          </button>
+          <input type="file" id="char-img-upload" hidden accept="image/*" onChange={handleImageUpload} />
+
+          <div className="editor-row">
             <div className="editor-field flex-1">
               <label>Character Name *</label>
               <input value={form.name} onChange={set('name')} placeholder="e.g. Adaeze, Kojo, Mei" />
@@ -186,12 +192,12 @@ function CharacterEditor({ character, onSave, onCancel }) {
           </div>
 
           <div className="editor-field">
-            <label>Physical Description <span className="label-hint">(This is injected into EVERY scene — be very detailed)</span></label>
+            <label>Physical notes <span className="label-hint">(optional — the photo is the source of truth)</span></label>
             <textarea
               value={form.physicalDescription}
               onChange={set('physicalDescription')}
               rows={3}
-              placeholder="e.g. Tall athletic build, dark brown skin, high cheekbones, short natural hair, wearing a red dress"
+              placeholder="Only add what the photo cannot show — wardrobe changes, scars, age in the story…"
             />
           </div>
 
@@ -299,7 +305,7 @@ function EditableField({ label, value, multiline = false, onSave }) {
 }
 
 // ── Full Screenplay Review Panel ──────────────────────────────────────────────
-function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, screenplaysApi, onScreenplayUpdate }) {
+function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, screenplaysApi, onScreenplayUpdate, estimatedUsd, balanceUsd }) {
   const [sp, setSp] = useState(screenplay);
   const [saving, setSaving] = useState(false);
 
@@ -496,8 +502,12 @@ function ScreenplayReviewPanel({ screenplay, onProduce, onRegenerate, loading, s
       <div className="production-cost-note mt-4">
         <div className="cost-icon"><Lightbulb size={20} /></div>
         <div>
-          <strong>Production Cost Estimate:</strong> This film will require ~{totalScenes} image generations and ~{totalScenes} video clip generations.
-          Cost depends on your video provider (Kling: ~$0.15/clip · Runway: ~$0.25/clip).
+          <strong>Estimated production charge:</strong>{' '}
+          {estimatedUsd != null ? formatUsd(estimatedUsd) : 'Calculating…'}
+          {balanceUsd != null && (
+            <> · Wallet {formatUsd(balanceUsd)}</>
+          )}
+          <div className="text-xs mt-1 opacity-80">Billed when the film finishes. {totalScenes} scenes.</div>
         </div>
       </div>
 
@@ -623,6 +633,9 @@ export default function FilmStudioPage() {
   const [isDraggingMedia, setIsDraggingMedia] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
   const [researchNotes, setResearchNotes] = useState('');
+  const [fundsOpen, setFundsOpen] = useState(false);
+  const [fundsDetail, setFundsDetail] = useState(null);
+  const [estimate, setEstimate] = useState(null);
 
   // Film concept form
   const [concept, setConcept] = useState(() => {
@@ -840,6 +853,25 @@ export default function FilmStudioPage() {
   });
 
   const setConcField = (field) => (e) => setConcept(c => ({ ...c, [field]: e.target.value }));
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const { data } = await estimateProduction({
+          kind: step === 3 ? 'screenplay' : 'production',
+          targetDurationMinutes: concept.duration || generatedScreenplay?.targetDurationMinutes || 3,
+          sceneCount: generatedScreenplay?.totalScenes || 0,
+          characterCount: characters.length,
+        });
+        if (!cancelled) setEstimate(data);
+      } catch {
+        if (!cancelled) setEstimate(null);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [step, concept.duration, generatedScreenplay?.totalScenes, generatedScreenplay?.targetDurationMinutes, characters.length]);
 
   // ── Step 1: Film Concept ────────────────────────────────────────────────────
   const step1Valid = concept.title.trim().length > 0 && concept.synopsis.trim().length > 20;
@@ -1120,7 +1152,13 @@ export default function FilmStudioPage() {
 
       setStep(4);
     } catch (err) {
-      setError(err.response?.data?.error || 'Screenplay generation failed. Please try again.');
+      if (isInsufficientFunds(err)) {
+        setFundsDetail(fundsError(err));
+        setFundsOpen(true);
+        setError('');
+      } else {
+        setError(err.response?.data?.error || 'Screenplay generation failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -1141,7 +1179,13 @@ export default function FilmStudioPage() {
       });
       navigate(`/app/jobs/${data.jobId}`);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to start production');
+      if (isInsufficientFunds(err)) {
+        setFundsDetail(fundsError(err));
+        setFundsOpen(true);
+        setError('');
+      } else {
+        setError(err.response?.data?.error || 'Failed to start production');
+      }
     } finally {
       setLoading(false);
     }
@@ -1679,6 +1723,8 @@ export default function FilmStudioPage() {
             loading={loading}
             screenplaysApi={screenplaysApi}
             onScreenplayUpdate={setGeneratedScreenplay}
+            estimatedUsd={estimate?.estimatedUsd}
+            balanceUsd={estimate?.balanceUsd}
           />
         )}
         {/* ── STEP 4: Catch-all fallback (in_production / completed / unknown status) ── */}
@@ -1732,6 +1778,11 @@ export default function FilmStudioPage() {
       )}
       {confirmDialog}
       <ImageLightboxModal preview={previewImage} onClose={() => setPreviewImage(null)} />
+      <InsufficientFunds
+        open={fundsOpen}
+        detail={fundsDetail}
+        onClose={() => setFundsOpen(false)}
+      />
     </div>
   );
 }

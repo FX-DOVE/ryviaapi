@@ -15,6 +15,21 @@ export async function recordTransaction({
   jobId = null,
   adminNotes = ''
 }) {
+  const existingCount = await CreditLedger.countDocuments({ workspaceId });
+  if (existingCount === 0) {
+    const ws = await Workspace.findById(workspaceId).select('credits ownerId');
+    if (ws && ws.credits > 0) {
+      await CreditLedger.create({
+        workspaceId,
+        userId: userId || ws.ownerId,
+        type: 'addition',
+        credits: ws.credits,
+        reason: 'Opening balance',
+        adminNotes: 'Seeded from workspace cache',
+      });
+    }
+  }
+
   const transaction = new CreditLedger({
     workspaceId,
     userId,

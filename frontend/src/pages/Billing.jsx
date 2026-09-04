@@ -1,49 +1,106 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
-import { CreditCard, Check, Lock } from 'lucide-react';
+import { AppInput } from '../components/ui/AppInput';
+import { Check, Wallet, ArrowUpRight, Loader2 } from 'lucide-react';
+import {
+  getWallet,
+  getLedger,
+  initializeTopup,
+  verifyTopup,
+  formatUsd,
+} from '../api/billing';
+import useAppStore from '../store/useAppStore';
 
 export default function Billing() {
-  const [credits, setCredits] = useState(1000);
-  const [loading, setLoading] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const setWallet = useAppStore((s) => s.setWallet);
+  const [balanceUsd, setBalanceUsd] = useState(0);
+  const [packages, setPackages] = useState([]);
+  const [ledger, setLedger] = useState([]);
+  const [customCredit, setCustomCredit] = useState('50');
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(null);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
-  const plans = [
-    { name: 'Creator Kickstart', credits: 500, price: '$15', desc: 'Perfect for small scripts & social clips' },
-    { name: 'Production Studio', credits: 2500, price: '$49', desc: 'Best for standard marketing and documentary projects', popular: true },
-    { name: 'Enterprise Factory', credits: 10000, price: '$149', desc: 'For automated batch scaling and full concurrent workers' }
-  ];
-
-  // Helper to fetch user workspace credits
-  const fetchCredits = async () => {
+  const load = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/users/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      if (response.ok && data.user) {
-        // Find credits if returned, fallback to mock state
-        setCredits(data.user.credits || 1250);
-      }
-    } catch (e) { }
+      const [walletRes, ledgerRes] = await Promise.all([
+        getWallet(),
+        getLedger({ limit: 20 }),
+      ]);
+      setBalanceUsd(walletRes.data.balanceUsd || 0);
+      setPackages(walletRes.data.packages || []);
+      setLedger(ledgerRes.data.logs || []);
+      setWallet({ balanceUsd: walletRes.data.balanceUsd || 0 });
+    } catch (e) {
+      setError(e.response?.data?.error || 'Could not load billing');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchCredits();
+    load();
   }, []);
 
-  const handlePurchase = async (planName, creditAmount) => {
-    setMessage(`Stripe checkout integration is coming soon! For now, this is a preview.`);
+  useEffect(() => {
+    const reference = searchParams.get('reference');
+    if (!reference) return;
+
+    let cancelled = false;
+    (async () => {
+      setPaying('verify');
+      try {
+        const { data } = await verifyTopup(reference);
+        if (cancelled) return;
+        setMessage(`Payment received. ${formatUsd(data.creditUsd)} added to your studio.`);
+        setBalanceUsd(data.balanceUsd);
+        setWallet({ balanceUsd: data.balanceUsd });
+        await load();
+      } catch (e) {
+        if (!cancelled) setError(e.response?.data?.error || 'Could not confirm payment');
+      } finally {
+        if (!cancelled) {
+          setPaying(null);
+          searchParams.delete('reference');
+          searchParams.delete('trxref');
+          setSearchParams(searchParams, { replace: true });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams.get('reference')]);
+
+  const startPay = async ({ packageId, creditUsd }) => {
+    setError('');
+    setMessage('');
+    setPaying(packageId || 'custom');
+    try {
+      const { data } = await initializeTopup(packageId ? { packageId } : { creditUsd });
+      if (data.authorizationUrl) {
+        window.location.href = data.authorizationUrl;
+        return;
+      }
+      throw new Error('Paystack did not return a checkout URL');
+    } catch (e) {
+      setError(e.response?.data?.error || e.message || 'Could not start payment');
+      setPaying(null);
+    }
   };
+
+  const customValue = Number(customCredit);
+  const customCharge = Number.isFinite(customValue) ? customValue * 2 : 0;
 
   return (
     <AppPage>
       <PageHeader
-        title="Credits & Billing"
-        description="Manage your usage plan, workspaces budgets, and top-up processing credits."
+        title="Studio wallet"
+        description="Add funds to produce films. Unused balance stays on your account."
       />
 
       {message && (
@@ -51,77 +108,112 @@ export default function Billing() {
           <Check size={18} /> {message}
         </div>
       )}
+      {error && (
+        <div className="alert alert-error">{error}</div>
+      )}
 
-      {/* Credit Balance Card */}
-      <AppCard className="billing-balance-card">
-        <div className="absolute inset-0 bg-[var(--gradient-brand)] opacity-5 z-0 pointer-events-none"></div>
-        <div className="billing-balance-main">
-          <h2 className="section-title mb-2">Active Workspace Balance</h2>
-          <div className="billing-credit-value">
-            {credits.toLocaleString()} <span className="text-xl font-medium text-[var(--text-muted)]">credits</span>
+      <AppCard className="wallet-hero">
+        <div className="wallet-hero-main">
+          <div className="wallet-kicker">Available balance</div>
+          <div className="wallet-balance">
+            {loading ? '—' : formatUsd(balanceUsd)}
           </div>
-          <p className="caption billing-balance-note">
-            Credits are consumed based on video pipeline actions (Script: 5, Image: 2, Video: 20, Voice: 3, Render: 5).
+          <p className="wallet-note">
+            Production is billed from this balance when a film finishes rendering.
           </p>
         </div>
-        <div className="billing-plan-card">
-          <div className="border-b border-[var(--glass-border)] pb-3 mb-3">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-[var(--text-muted)]">Current Plan</div>
-            <div className="text-lg font-bold text-[var(--text-primary)] mt-1">Pay-As-You-Go Pro</div>
-          </div>
-          <div className="text-[12px] text-[var(--text-secondary)] flex items-center justify-between py-2 border-b border-[var(--glass-border)]">
-            <span className="text-[var(--text-muted)]">Storage Quota</span>
-            <span className="font-medium">10 GB (Cloud R2)</span>
-          </div>
-          <div className="text-[12px] text-[var(--text-secondary)] flex items-center justify-between py-2">
-            <span className="text-[var(--text-muted)]">Billing</span>
-            <span className="font-medium">Usage-based</span>
-          </div>
+        <div className="wallet-hero-side">
+          <Wallet size={28} />
+          <span>Pay as you produce</span>
         </div>
       </AppCard>
 
-      {/* Pricing Options */}
       <div className="billing-section-heading">
-        <h2 className="section-title">Top-up Credit Packages</h2>
+        <h2 className="section-title">Add funds</h2>
       </div>
 
       <div className="billing-plans-grid">
-        {plans.map((p, idx) => (
+        {packages.map((p) => (
           <AppCard
-            key={idx}
+            key={p.id}
             className={`billing-plan-option ${p.popular ? 'billing-plan-popular' : ''}`}
           >
-            {p.popular && (
-              <div className="billing-popular-badge">
-                Most Popular
-              </div>
-            )}
+            {p.popular && <div className="billing-popular-badge">Most chosen</div>}
             <div className="billing-plan-content">
-              <h3 className="card-title text-xl mb-2">{p.name}</h3>
-              <p className="body-text text-sm min-h-[48px]">{p.desc}</p>
-
+              <h3 className="card-title text-xl mb-2">{p.label}</h3>
+              <p className="body-text text-sm">Adds {formatUsd(p.creditUsd)} to your studio wallet.</p>
               <div className="billing-plan-price">
-                <span className="metric-value" style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}>{p.price}</span>
-                <span className="caption ml-2">one-time</span>
+                <span className="metric-value" style={{ fontSize: 'clamp(28px, 4vw, 40px)' }}>
+                  {formatUsd(p.chargeUsd)}
+                </span>
               </div>
-
               <div className="billing-credit-pill">
-                <span className="text-[var(--brand-light)] font-bold text-base">{p.credits} credits</span>
+                <span className="text-[var(--brand-light)] font-bold text-base">
+                  You receive {formatUsd(p.creditUsd)}
+                </span>
               </div>
             </div>
-
             <AppButton
-              onClick={() => handlePurchase(p.name, p.credits)}
-              disabled
-              variant="secondary"
-              className={`w-full text-base btn-coming-soon`}
-              icon={Lock}
+              onClick={() => startPay({ packageId: p.id })}
+              disabled={!!paying}
+              className="w-full text-base"
+              icon={paying === p.id ? Loader2 : ArrowUpRight}
             >
-              Coming Soon
+              {paying === p.id ? 'Redirecting…' : 'Pay with Paystack'}
             </AppButton>
           </AppCard>
         ))}
       </div>
+
+      <AppCard className="custom-topup">
+        <h3 className="card-title mb-2">Custom amount</h3>
+        <p className="body-text text-sm mb-4">Enter the studio balance you want to add.</p>
+        <div className="custom-topup-row">
+          <AppInput
+            label="Balance to add (USD)"
+            type="number"
+            min="5"
+            step="5"
+            value={customCredit}
+            onChange={(e) => setCustomCredit(e.target.value)}
+          />
+          <div className="custom-topup-charge">
+            <span>You pay</span>
+            <strong>{formatUsd(customCharge)}</strong>
+          </div>
+          <AppButton
+            disabled={!!paying || !Number.isFinite(customValue) || customValue < 5}
+            onClick={() => startPay({ creditUsd: customValue })}
+          >
+            {paying === 'custom' ? 'Redirecting…' : 'Pay with Paystack'}
+          </AppButton>
+        </div>
+      </AppCard>
+
+      <div className="billing-section-heading">
+        <h2 className="section-title">Activity</h2>
+      </div>
+      <AppCard className="ledger-card">
+        {ledger.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">No wallet activity yet.</p>
+        ) : (
+          <ul className="ledger-list">
+            {ledger.map((row) => (
+              <li key={row._id} className="ledger-row">
+                <div>
+                  <div className="ledger-reason">{row.reason}</div>
+                  <div className="ledger-date">
+                    {new Date(row.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                <div className={`ledger-amount ${row.type === 'deduction' ? 'is-out' : 'is-in'}`}>
+                  {row.type === 'deduction' ? '−' : '+'}{formatUsd(row.amountUsd)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AppCard>
     </AppPage>
   );
 }

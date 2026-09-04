@@ -51,7 +51,7 @@ export async function register(req, res, next) {
       name:    `${name}'s Workspace`,
       ownerId: user._id,
       members: [{ userId: user._id, role: 'owner' }],
-      credits: 1000, // starting credits budget
+      credits: 0,
     });
     await workspace.save();
 
@@ -110,7 +110,7 @@ export async function login(req, res, next) {
           name:    `${user.name}'s Workspace`,
           ownerId: user._id,
           members: [{ userId: user._id, role: 'owner' }],
-          credits: 1000
+          credits: 0
         });
         user.activeWorkspaceId = newWs._id;
       }

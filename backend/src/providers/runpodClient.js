@@ -197,6 +197,17 @@ async function pollJob(endpointId, jobId, { apiKey, maxWaitMs, pollMs, label, ca
       const delay = Math.round((data.delayTime || 0) / 1000);
       const exec = Math.round((data.executionTime || 0) / 1000);
       console.log(`[${label}] job ${jobId} COMPLETED — queue/worker startup ${delay}s, execution ${exec}s. Downloading output...`);
+      try {
+        const { recordRunpodCall } = await import('../services/costTracker.js');
+        await recordRunpodCall({
+          label,
+          executionTimeMs: Number(data.executionTime) || 0,
+          delayTimeMs: Number(data.delayTime) || 0,
+          endpointId,
+        });
+      } catch (costErr) {
+        console.warn(`[${label}] cost tracking skipped: ${costErr.message}`);
+      }
       return unwrapOutput(data.output, { label, jobId });
     }
 
