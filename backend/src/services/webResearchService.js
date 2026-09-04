@@ -60,7 +60,7 @@ export async function fetchWebResearch(searchQuery, { timeoutMs = 4000 } = {}) {
 /**
  * Format-specific narrative instructions for the 8 Video Types
  */
-const FORMAT_SPECIFIC_DIRECTIVES = {
+export const FORMAT_SPECIFIC_DIRECTIVES = {
   documentary: `VIDEO TYPE: DOCUMENTARY
 - Style: Factual narration with cinematic B-roll and captions.
 - Storycraft: Ground the premise in real-world sociological, historical, or psychological truth.
@@ -69,12 +69,16 @@ const FORMAT_SPECIFIC_DIRECTIVES = {
   drama: `VIDEO TYPE: DRAMA
 - Style: Emotional acting: characters cry, argue, love, betray.
 - Storycraft: High emotional stakes, deep human vulnerabilities, interpersonal friction, and powerful moral dilemmas.
-- Directing: Intense close-up acting moments, raw emotional confrontations where characters reveal secrets, break down in tears, fight for their relationships, and experience transformative heartbreak or redemption.`,
+- Structure: Acts with wound → confrontation → reckoning. Dialogue-forward scenes; each major line is its own beat.
+- Continuity: Lock wardrobe per act, list accessories every beat, carry characterState (tears, bruises) forward.
+- Directing: Storyboard wide → two-shot → OTS → ECU. Intense close-up acting, raw confrontations, eyeline locks between speakers.`,
 
   movie: `VIDEO TYPE: MOVIE / FEATURE FILM
 - Style: Full cinematic production with acting, coverage, and grand pacing.
 - Storycraft: Classic three-act Hollywood architecture with strong inciting incident, mid-point turning point, dark night of the soul, and climactic confrontation.
-- Directing: Multi-camera cinematic coverage (drone establishing, over-shoulder dialogue, intense reaction shots, cinematic lighting).`,
+- Structure: Acts/scenes/beats with reusable locationId, clothingByAct, props[], accessories{}, characterState{}.
+- Continuity: Identity sheets separate from action prompts; props persist until story removes them.
+- Directing: Multi-camera studio coverage — drone establishing, master two-shot, OTS A/B, reaction ECU, insert props, motivated camera moves.`,
 
   explainer: `VIDEO TYPE: EXPLAINER
 - Style: Clear teaching video, clean lighting, punchy visual hooks.
@@ -99,7 +103,9 @@ const FORMAT_SPECIFIC_DIRECTIVES = {
   anime: `VIDEO TYPE: ANIME / CARTOON
 - Style: Style-locked animated performance, vibrant dramatic intensity.
 - Storycraft: Japanese anime storytelling with inner monologues, expressive emotional extremes, signature visual quirks, and dynamic narrative peaks.
-- Directing: Dynamic anime angles (extreme perspective, speed lines, Dutch tilts, dramatic glowing eyes), intense character expressions, and stylized transitions.`
+- Structure: Episode/act arcs; character sheets lock hair/eyes/costume; painted BG locationIds reused.
+- Continuity: Signature accessories every beat; emotional visual states in characterState (blush, tears, glowing eyes).
+- Directing: Dynamic anime angles (extreme perspective, speed lines, Dutch tilts, dramatic eye ECUs), impact frames after reveals, stylized transitions.`
 };
 
 /**
@@ -198,4 +204,11 @@ Output ONLY raw JSON.`;
       researchHighlights: '',
     };
   }
+}
+
+
+/** Lookup a format / videoType director directive (drama, movie, anime, …). */
+export function getFormatDirective(videoType = 'drama') {
+  const key = String(videoType || 'drama').toLowerCase().trim();
+  return FORMAT_SPECIFIC_DIRECTIVES[key] || FORMAT_SPECIFIC_DIRECTIVES.drama;
 }

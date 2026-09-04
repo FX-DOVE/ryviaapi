@@ -93,6 +93,136 @@ export const STYLE_PRESETS = {
   },
 };
 
+/**
+ * Map FilmStudioPage videoType ids onto STYLE_PRESETS keys.
+ * Drama/movie stay photoreal cinematic; anime maps to the anime production bible.
+ */
+export const MODE_TO_STYLE_PRESET = {
+  documentary: 'documentary',
+  drama: 'cinematic',
+  movie: 'cinematic',
+  explainer: 'realistic',
+  commercial: 'luxury',
+  music_video: 'cinematic',
+  cinematic_trailer: 'cinematic',
+  anime: '2d_anime',
+  animation_anime: '2d_anime',
+  nollywood: 'nollywood_drama',
+};
+
+/**
+ * Studio director bibles — injected into screenplay + cinematic decomposition
+ * so drama / movie / anime produce structured shot lists, wardrobe, locations,
+ * and camera language the pipeline can consume.
+ */
+export const DIRECTOR_BIBLES = {
+  drama: `STUDIO DIRECTOR BIBLE — DRAMA
+You are the lead director on a prestige drama series / film. Prioritize emotional truth over spectacle.
+STRUCTURE:
+- Act architecture: setup → wound → confrontation → collapse → reckoning.
+- Scenes are dialogue-forward. Each confrontation beat gets its own 8s segment.
+- Storyboard first: wide establish → two-shot → OTS → reaction ECU → hold.
+CAMERA LANGUAGE (mandatory variety):
+- Opening of a new location: wide_establishing or aerial_wide.
+- Dialogue: alternate two_shot, over_shoulder, medium_close, close_up.
+- Peak emotion (tears, betrayal, confession): tight_close_up or extreme_close_up on eyes / hands / ring.
+- Power imbalance: low_angle on aggressor, high_crane on vulnerable character.
+- Dutch angle ONLY for psychological rupture, never decorative.
+WARDROBE / CONTINUITY:
+- Lock each character's default outfit per act in clothingByAct.
+- Accessories (rings, phones, walking sticks, bags) listed in every beat where still present.
+- CharacterState (tear-stained, sweat, bruised, disheveled) carries forward until story changes it.
+LOCATIONS:
+- Intimate interiors preferred (sitting rooms, kitchens, corridors). TimeOfDay and practical lighting locked.
+- Reuse locationId whenever the same room returns.
+PERFORMANCE DIRECTION:
+- gaze must name who looks at whom. Characters speaking to each other maintain eyeline.
+- voiceDirection and expression are required on every dialogue beat.
+OUTPUT: structured JSON acts → scenes → beats the pipeline consumes — never prose summaries.`,
+
+  movie: `STUDIO DIRECTOR BIBLE — FEATURE FILM / MOVIE
+You are a feature-film director planning coverage like a Hollywood / Nollywood studio unit.
+STRUCTURE:
+- Classic three-act feature architecture with clear inciting incident, midpoint turn, dark night, climax.
+- Scenes cover action AND dialogue. Mix establishing, coverage, insert, and reaction.
+CAMERA LANGUAGE (mandatory studio coverage):
+- New exterior / estate / city: drone_aerial or aerial_wide with drone_sweep.
+- Dialogue scenes: master two_shot → over_shoulder A → over_shoulder B → close_up punches.
+- Action / chase: tracking_steadicam, low_angle, handheld_organic — never static for more than one beat.
+- Inserts: extreme_close_up on critical props (keys, phones, documents, weapons).
+- Transitions between acts: high_crane or slow_pull_back reveals.
+WARDROBE / CONTINUITY:
+- Hero wardrobe locked per act; costume changes only at act boundaries or explicit story beats.
+- Props introduced once must persist in props[] on every later beat until removed by story.
+- Spatial blocking respects 180-degree rule; eyelines reverse correctly across cuts.
+LOCATIONS:
+- Grand establishing plates for every major location; interiors keep identical architecture and lighting.
+- timeVariants day/night required for every environment.
+PRODUCTION VALUES:
+- Motivated camera moves only. Explicit startFrameVisual / endFrameVisual on every beat.
+- audioCues for ambience, Foley, and score swell notes (LTX native audio).
+OUTPUT: structured JSON with reusable locationId, clothingByAct, props, accessories, characterState.`,
+
+  anime: `STUDIO DIRECTOR BIBLE — ANIME / ANIMATED SERIES
+You are a series episode director for a high-end anime production (Ghibli / MAPPA / Kyoto Animation calibre).
+STRUCTURE:
+- Episode / act arcs with cold open, character focus, emotional peak, and cliff or resolve.
+- Inner monologue allowed as dialogue with voiceDirection = "internal monologue / soft voiceover".
+- Expressive extremes: shock, resolve, tenderness — face and eyes carry the story.
+CAMERA / COMPOSITION LANGUAGE:
+- Opening: wide painted-background establishing with slow_push_in.
+- Dialogue: medium_close and close_up with strong eyelines; extreme_close_up on eyes for turning points.
+- Action: dutch_angle, low_angle hero shots, tracking_steadicam, speed-implied motion in action text.
+- Impact frames: hold tight_close_up one beat after a revelation.
+VISUAL STYLE LOCK:
+- Cel shading, clean lineart, painted backgrounds, saturated but controlled palette.
+- Character sheets are IDENTITY ASSETS — hair color, eye shape, costume silhouette must never drift.
+- Separate identity (who they are) from action (what they do this beat) in prompts.
+WARDROBE / CONTINUITY:
+- Signature costumes locked; school uniforms / battle outfits in clothingByAct.
+- Accessories (ribbons, weapons, charms) listed every beat they remain.
+- Emotional visual states (blush, tears, sweat-drop, glowing eyes) in characterState.
+LOCATIONS:
+- Distinct painted BG plates with timeVariants (day / dusk / night / golden hour).
+- Reuse locationId for recurring school, home, city rooftop, etc.
+OUTPUT: structured JSON acts/scenes/beats with anime camera enums, wardrobe locks, and prop continuity.`,
+
+  documentary: `STUDIO DIRECTOR BIBLE — DOCUMENTARY
+Observational and interview-led. Handheld intimacy, natural light, B-roll inserts, VO-friendly pacing.
+Prefer wide_establishing for location truth, close_up for interview emotion, macro inserts for detail.`,
+
+  cinematic_trailer: `STUDIO DIRECTOR BIBLE — CINEMATIC TRAILER
+Teaser architecture: hook → stakes montage → silence beat → title card energy.
+Rapid angle changes, epic wides, extreme close-ups on iconic props, dutch angles for tension.`,
+
+  commercial: `STUDIO DIRECTOR BIBLE — COMMERCIAL
+3-second hook, problem, product hero, aspirational payoff. Clean lighting, product ECUs, dynamic push-ins.`,
+
+  music_video: `STUDIO DIRECTOR BIBLE — MUSIC VIDEO
+Beat-synced visual poetry. Color shifts, rhythmic cuts, atmospheric sets, recurring motifs.`,
+
+  explainer: `STUDIO DIRECTOR BIBLE — EXPLAINER
+Clear teaching beats, high-key lighting, visual metaphors, structured progression, clean medium framing.`,
+};
+
+export function resolveStylePreset(videoTypeOrPreset = 'cinematic') {
+  const key = String(videoTypeOrPreset || 'cinematic').toLowerCase().trim();
+  if (STYLE_PRESETS[key]) return key;
+  return MODE_TO_STYLE_PRESET[key] || 'cinematic';
+}
+
+export function getDirectorBible(genreOrVideoType = 'drama') {
+  const key = String(genreOrVideoType || 'drama').toLowerCase().trim();
+  return DIRECTOR_BIBLES[key]
+    || DIRECTOR_BIBLES[MODE_TO_STYLE_PRESET[key]]
+    || DIRECTOR_BIBLES.drama;
+}
+
+export function getStyleModifiers(videoTypeOrPreset = 'cinematic') {
+  const presetKey = resolveStylePreset(videoTypeOrPreset);
+  return STYLE_PRESETS[presetKey] || STYLE_PRESETS.cinematic;
+}
+
 export const COLOR_GRADE_FFMPEG = {
   netflix:      "curves=r='0/0 0.5/0.55 1/1':g='0/0 0.5/0.5 1/0.95':b='0/0 1/0.9'",
   sepia:        "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
@@ -142,7 +272,7 @@ export async function enrichScenePrompt(rawPrompt, sceneConfig, project = null) 
   }
 
   // 4. Inject style preset modifiers
-  const presetKey = (sceneConfig.styleConfig?.preset || 'cinematic').toLowerCase();
+  const presetKey = resolveStylePreset(sceneConfig.styleConfig?.preset || sceneConfig.videoType || 'cinematic');
   const preset = STYLE_PRESETS[presetKey];
   if (preset) {
     promptParts.push(preset.visualModifiers);
@@ -182,4 +312,4 @@ export function getCinematicLetterboxFilter() {
   return 'drawbox=y=0:h=ih*0.12:color=black:t=fill,drawbox=y=ih-ih*0.12:h=ih*0.12:color=black:t=fill';
 }
 
-export default { enrichScenePrompt, getColorGradeFilter, getCinematicLetterboxFilter, STYLE_PRESETS };
+export default { enrichScenePrompt, getColorGradeFilter, getCinematicLetterboxFilter, STYLE_PRESETS, MODE_TO_STYLE_PRESET, DIRECTOR_BIBLES, resolveStylePreset, getDirectorBible, getStyleModifiers };

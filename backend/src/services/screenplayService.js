@@ -4,7 +4,8 @@ import Screenplay from '../models/Screenplay.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 import { compileCharacterSeedPrompt } from './characterConsistencyService.js';
 import { emitWorkspaceEvent } from '../config/socket.js';
-import { researchAndExpandConcept } from './webResearchService.js';
+import { researchAndExpandConcept, getFormatDirective } from './webResearchService.js';
+import { getDirectorBible } from './styleService.js';
 
 /**
  * SCREENPLAY SERVICE — AI Feature Film Writer
@@ -56,7 +57,9 @@ CRITICAL QUALITY STANDARDS:
 - The story must have CAUSE AND EFFECT — each act's events must directly cause the next act's crisis
 - Dialogue moments and key reveals must be planned into the act structure
 - The synopsis provided by the user is the CORE STORY — expand it faithfully with trending cultural and cinematic depth
-${videoTypeGuidelines ? `\nCRITICAL FORMAT DIRECTIVES FOR ${String(genre).toUpperCase()}:\n${videoTypeGuidelines}\n` : ''}`;
+${videoTypeGuidelines ? `\nCRITICAL FORMAT DIRECTIVES FOR ${String(genre).toUpperCase()}:\n${videoTypeGuidelines}\n` : ''}
+${getDirectorBible(genre)}
+${getFormatDirective(genre)}`;
 
   const userPrompt = `Write a detailed Story Bible for the following feature film:
 
@@ -135,7 +138,7 @@ function buildRollingContextBrief(previousScenes, characterArcs = [], maxScenes 
   return `\nSTORY SO FAR (what happened in the previous scenes — you MUST continue from here):\n${sceneBriefs}${arcBrief}\n`;
 }
 
-async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, videoTypeGuidelines = '', sceneOffset, jobId, previousScenes = [], characterArcs = [], storyBible = '' }) {
+async function generateActScenes({ title, actData, characters, animationStyle, additionalSettings, videoTypeGuidelines = '', sceneOffset, jobId, previousScenes = [], characterArcs = [], storyBible = '', genre = 'drama' }) {
   // Build a rich character reference list — not just names.
   // The LLM needs physical descriptions and ethnicity to generate accurate scene
   // descriptions; name-only causes it to invent generic appearances.
@@ -153,9 +156,10 @@ async function generateActScenes({ title, actData, characters, animationStyle, a
 
 Your scenes must tell a COHERENT, COMPELLING STORY that flows logically from one scene to the next like a real movie. You write dialogue that sounds like real people talking — specific, emotional, and purposeful. Every line must advance the plot or reveal character.
 ${videoTypeGuidelines ? `\nCRITICAL SCENE DIRECTING GUIDELINES:\n${videoTypeGuidelines}\n` : ''}
+${getDirectorBible(genre)}
 You NEVER write generic placeholder dialogue like "I can't believe this" or "We need to talk". Your dialogue is sharp, in-character, and drives the story forward.
 
-When writing character appearances and actions, you MUST respect the established physical descriptions provided — do not invent generic or different appearances.`;
+When writing character appearances and actions, you MUST respect the established physical descriptions provided — do not invent generic or different appearances. Lock wardrobe and signature accessories; reuse locations by name.`;
 
   const storyBibleBlock = storyBible
     ? `\nSTORY BIBLE (the world and emotional journey of this film):\n${storyBible.slice(0, 1500)}\n`
@@ -519,6 +523,7 @@ export async function runScreenplayGeneration(screenplayId, { jobId = '' } = {})
         previousScenes: allScenes,
         characterArcs,
         storyBible: screenplay.storyBible,
+        genre: screenplay.genre || 'drama',
       });
 
       // Stage 2b: Validate coherence of the generated act

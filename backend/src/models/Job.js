@@ -102,6 +102,8 @@ const jobSchema = new mongoose.Schema(
     environmentLocks:  { type: mongoose.Schema.Types.Mixed, default: {} },
     // Master World & Setting DNA (country, setting, cinematography)
     visualDna:         { type: mongoose.Schema.Types.Mixed, default: null },
+    // Act → { characterName → outfit } derived during locking
+    wardrobeByAct:     { type: mongoose.Schema.Types.Mixed, default: {} },
 
     // ── Film Mode Fields ───────────────────────────────────────
     filmMode:          { type: Boolean, default: false },

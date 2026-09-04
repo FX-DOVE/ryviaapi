@@ -14,6 +14,8 @@
 
 import { generateWithFallback } from '../providers/reasoningProvider.js';
 import { SEGMENT_DURATION_SEC, MAX_SEGMENTS_PER_SCENE, GENERATION_STRATEGY, DIRECTOR_SCRIPT_CHAR_LIMIT } from '../config/constants.js';
+import { getDirectorBible, getStyleModifiers, resolveStylePreset } from './styleService.js';
+import { FORMAT_SPECIFIC_DIRECTIVES } from './webResearchService.js';
 
 export function parseAndRepairJson(rawText) {
   if (!rawText || typeof rawText !== 'string') {
@@ -111,7 +113,29 @@ export async function decomposeScript({
     );
   }
 
-  const systemPrompt = `You are an elite film director and script supervisor. Your job is to take a raw screenplay/script and break it down into a precise production plan. You understand acts, scenes, beats, character blocking, camera language, emotional arcs, and pacing. You plan for 8-second video segments — each scene requires multiple segments to complete.
+  const genreKey = String(genre || 'drama').toLowerCase().trim();
+  const directorBible = getDirectorBible(genreKey);
+  const formatDirective = FORMAT_SPECIFIC_DIRECTIVES[genreKey]
+    || FORMAT_SPECIFIC_DIRECTIVES[resolveStylePreset(genreKey)]
+    || '';
+  const styleMods = getStyleModifiers(animationStyle || genreKey);
+
+  const systemPrompt = `You are an elite film director, script supervisor, and storyboard artist for a professional AI video studio. Your job is to take a raw screenplay/script and break it down into a precise production plan the pipeline can execute beat-by-beat. You plan for ${SEGMENT_DURATION_SEC}-second video segments — each scene requires multiple segments.
+
+STORYBOARD-FIRST RULES:
+1. Lock character identity sheets (physicalDescription, clothingDefault, clothingByAct, signature accessories) BEFORE describing motion.
+2. Separate IDENTITY (who / what they wear) from ACTION (what happens this beat).
+3. Every location gets a reusable locationId; wardrobe and accessories are continuity data, not decoration.
+4. Camera language must be explicit enums the renderer understands — never vague "nice shot" prose.
+
+${directorBible}
+
+${formatDirective ? `FORMAT DIRECTIVES:\n${formatDirective}` : ''}
+
+VISUAL STYLE LOCK FOR THIS SHOW:
+- Visual: ${styleMods.visualModifiers}
+- Color: ${styleMods.colorModifiers}
+- Motion: ${styleMods.motionModifiers}
 
 CRITICAL DIRECTIVE — DIALOGUE FIDELITY:
 When the script includes dialogue lines marked as FINAL or VERBATIM, you MUST preserve them EXACTLY as written. Do NOT paraphrase, rewrite, summarize, or invent new dialogue. The screenplay's dialogue has been approved by the writer. Your job is to DIRECT it (plan camera, blocking, beats), not REWRITE it.
@@ -450,19 +474,65 @@ export function planGenerationStrategies(directorPlan) {
  * @param {string} animationStyle - Film's animation style
  * @returns {{ imagePrompt: string, videoPrompt: string }}
  */
-export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environmentLock = '', animationStyle = 'cinematic') {
+/**
+ * Resolve a character lock prompt by exact or case-insensitive / partial name.
+ * Uploaded identity sheets often use slightly different casing than director beats.
+ */
+function resolveLockPrompt(characterLocks, name) {
+  if (!name || !characterLocks) return '';
+  const raw = String(name).trim();
+  if (!raw) return '';
+  if (typeof characterLocks[raw] === 'string' && characterLocks[raw]) return characterLocks[raw];
+  if (characterLocks[raw]?.lockPrompt) return characterLocks[raw].lockPrompt;
+
+  const clean = raw.toLowerCase();
+  for (const [key, value] of Object.entries(characterLocks)) {
+    const k = String(key).trim().toLowerCase();
+    if (k === clean || clean.includes(k) || k.includes(clean)) {
+      if (typeof value === 'string') return value;
+      if (value?.lockPrompt) return value.lockPrompt;
+    }
+  }
+  return '';
+}
+
+function isAnimeStyle(animationStyle = '') {
+  const s = String(animationStyle || '').toLowerCase();
+  return s.includes('anime') || s === '2d_anime' || s === 'animation_anime';
+}
+
+export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environmentLock = '', animationStyle = 'cinematic', options = {}) {
   // Director-plan scenes carry `characters`; Scene documents carry `characterNames`.
   const beatCharacters = (scene.characters?.length ? scene.characters : scene.characterNames) || [];
   const charLockLines = beatCharacters
-    .filter(name => characterLocks[name])
-    .map(name => characterLocks[name]);
+    .map((name) => resolveLockPrompt(characterLocks, name))
+    .filter(Boolean);
+
+  // Act wardrobe overrides (from clothingByAct) injected by the caller
+  const wardrobeLines = [];
+  const wardrobeByCharacter = options.wardrobeByCharacter || {};
+  for (const name of beatCharacters) {
+    const w = wardrobeByCharacter[name] || wardrobeByCharacter[String(name).toLowerCase()];
+    if (w) wardrobeLines.push(`${name} wardrobe this act: ${w}`);
+  }
 
   const charBlock = charLockLines.length > 0
     ? `CHARACTERS (LOCKED — identical appearance in every frame):\n${charLockLines.join('\n')}`
     : '';
 
-  const envBlock = environmentLock
-    ? `ENVIRONMENT (LOCKED — identical location in every frame):\n${environmentLock}`
+  const wardrobeBlock = wardrobeLines.length
+    ? `WARDROBE LOCK (act ${act?.actNumber || 1}): ${wardrobeLines.join('; ')}`
+    : '';
+
+  const envLockText = typeof environmentLock === 'string'
+    ? environmentLock
+    : (environmentLock?.lockPrompt || '');
+  const envBlock = envLockText
+    ? `ENVIRONMENT (LOCKED — identical location in every frame):\n${envLockText}`
+    : '';
+
+  const continuityBibleBlock = options.continuityBlock
+    ? String(options.continuityBlock).trim()
     : '';
 
   // Continuity payload: the objects, worn items and physical states that have to
@@ -496,12 +566,23 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
   // when a previous frame is available to edit forward).
   // NEVER include: "8K", "ultra detailed", "concept art", "illustration", "render"
   // — these push the diffusion model into over-processed or cartoon space.
+  const styleMods = getStyleModifiers(animationStyle);
+  const anime = isAnimeStyle(animationStyle);
+  const identityPrefix = anime
+    ? `Professional anime production still, ${styleMods.visualModifiers}, clean lineart, consistent character sheet identity`
+    : 'RAW photo, shot on 35mm film, Kodak Portra 400, cinematic film still, authentic natural skin tones, film grain';
+  const identitySuffix = anime
+    ? 'CRITICAL: Match the exact character designs, hair, eye shape, and costume silhouette from reference sheets. Do not redesign the character.'
+    : 'CRITICAL: Match the exact character faces, skin tones, and clothing from reference images. Realistic human skin texture, natural pores and complexion, unretouched, no airbrushing, no plastic sheen';
+
   const imagePrompt = [
-    'RAW photo, shot on 35mm film, Kodak Portra 400, cinematic film still, authentic natural skin tones, film grain',
+    identityPrefix,
     cameraDesc.imageFraming,
     `Scene: ${scene.location || 'unspecified location'}`,
     envBlock,
     charBlock,
+    wardrobeBlock,
+    continuityBibleBlock,
     beat.startFrameVisual ? `Start Frame: ${beat.startFrameVisual}` : `Action: ${beat.action}`,
     gazeBlock,
     beat.expression ? `Expression: ${beat.expression}` : '',
@@ -510,14 +591,19 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     propBlock,
     continuityBlock,
     `Mood: ${beat.mood || scene.emotion || 'neutral'}, intensity ${scene.intensity || 5}/10`,
-    `Lighting: natural ${scene.timeOfDay || 'day'} cinematic 3-point lighting, practical film set lights`,
-    'CRITICAL: Match the exact character faces, skin tones, and clothing from reference images',
-    'Realistic human skin texture, natural pores and complexion, unretouched, no airbrushing, no plastic sheen',
+    anime
+      ? `Lighting: ${scene.timeOfDay || 'day'} anime lighting, painted background ambience`
+      : `Lighting: natural ${scene.timeOfDay || 'day'} cinematic 3-point lighting, practical film set lights`,
+    identitySuffix,
   ].filter(Boolean).join('. ');
 
   // Video prompt — LTX-2.5.
+  const videoStyleLead = anime
+    ? `${animationStyle} anime episode, 24fps stylized motion, ${SEGMENT_DURATION_SEC} second clip, professional anime studio production`
+    : `${animationStyle} feature film, cinematic 24fps motion, ${SEGMENT_DURATION_SEC} second clip, photorealistic studio production`;
+
   const videoPrompt = [
-    `${animationStyle} feature film, cinematic 24fps motion, ${SEGMENT_DURATION_SEC} second clip, photorealistic studio production`,
+    videoStyleLead,
     cameraDesc.videoMotion,
     `Action: ${beat.action}`,
     gazeBlock,
@@ -527,12 +613,16 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     beat.endFrameVisual ? `Motion progression: settles on ${beat.endFrameVisual}` : '',
     beat.emotionalContinuity ? `Emotional arc: ${beat.emotionalContinuity}` : '',
     stateBlock,
+    wardrobeBlock,
     propBlock,
+    continuityBibleBlock,
     `Mood: ${beat.mood || scene.emotion || 'neutral'}`,
     charBlock,
     envBlock,
     beat.audioCues ? `[SOUND DESIGN & AUDIO]: ${beat.audioCues}` : '',
-    'Smooth fluid motion, consistent character appearance, realistic human movement, practical lighting, focused conversational eyelines',
+    anime
+      ? 'Smooth anime motion, locked character designs, expressive eyes, focused conversational eyelines'
+      : 'Smooth fluid motion, consistent character appearance, realistic human movement, practical lighting, focused conversational eyelines',
   ].filter(Boolean).join('. ');
 
   return { imagePrompt, videoPrompt };

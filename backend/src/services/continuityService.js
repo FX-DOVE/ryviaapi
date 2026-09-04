@@ -26,11 +26,13 @@ export async function extractContinuityPrompt(projectId, sceneContext = {}) {
       if (sceneContext.characterNames && !sceneContext.characterNames.includes(c.name)) return;
 
       prompt += `- ${c.name}: ${c.physicalDescription || ''}. Wearing: ${c.clothing || 'default'}. `;
-      if (c.accessories && c.accessories.length) prompt += `Accessories: ${c.accessories.join(', ')}. `;
+      if (c.accessories && c.accessories.length) prompt += `Accessories (must remain visible when present): ${c.accessories.join(', ')}. `;
       if (c.hairstyle) prompt += `Hairstyle: ${c.hairstyle}. `;
+      if (c.currentState) prompt += `Physical state: ${c.currentState}. `;
       if (c.spatialPosition) prompt += `Current Position: ${c.spatialPosition}. `;
       if (c.eyeline) prompt += `Eyeline: ${c.eyeline}. `;
       if (c.emotionalState) prompt += `Emotion: ${c.emotionalState}. `;
+      if (c.currentLocationId) prompt += `At location: ${c.currentLocationId}. `;
       prompt += '\n';
     });
     prompt += '\n';
@@ -118,4 +120,119 @@ export async function updateContinuityState(projectId, directorSceneData) {
   return bible;
 }
 
-export default { getContinuityState, extractContinuityPrompt, updateContinuityState };
+
+/**
+ * Seed / refresh ContinuityBible from a director plan so wardrobe, locations,
+ * accessories and character state are available to every prompt compile path.
+ */
+export async function seedContinuityFromDirectorPlan(projectId, directorPlan, screenplayId = null) {
+  if (!projectId || !directorPlan) return null;
+
+  const bible = await getContinuityState(projectId);
+  if (screenplayId) bible.screenplayId = screenplayId;
+
+  // Characters + default wardrobe / accessories from plan
+  for (const char of directorPlan.characters || []) {
+    const name = char.name;
+    if (!name) continue;
+    let row = bible.characters.find((c) => c.name === name);
+    if (!row) {
+      row = { name };
+      bible.characters.push(row);
+    }
+    if (char.physicalDescription) row.physicalDescription = char.physicalDescription;
+    if (char.clothingDefault) row.clothing = char.clothingDefault;
+    // Prefer act-1 wardrobe when clothingByAct is present
+    const act1 = char.clothingByAct?.['1'] || char.clothingByAct?.[1];
+    if (act1) row.clothing = act1;
+    if (Array.isArray(char.accessories)) row.accessories = char.accessories;
+    else if (typeof char.accessories === 'string' && char.accessories.trim()) {
+      row.accessories = [char.accessories.trim()];
+    }
+    if (char.filmCharacterId) row.filmCharacterId = char.filmCharacterId;
+  }
+
+  // Harvest accessories / state from beats (latest wins)
+  for (const act of directorPlan.acts || []) {
+    for (const scene of act.scenes || []) {
+      for (const beat of scene.beats || []) {
+        if (beat.accessories && typeof beat.accessories === 'object') {
+          for (const [cname, accessory] of Object.entries(beat.accessories)) {
+            if (!accessory) continue;
+            let row = bible.characters.find((c) => c.name === cname);
+            if (!row) {
+              row = { name: cname };
+              bible.characters.push(row);
+            }
+            const list = Array.isArray(row.accessories) ? [...row.accessories] : [];
+            const token = String(accessory).trim();
+            if (token && !list.includes(token)) list.push(token);
+            row.accessories = list;
+          }
+        }
+        if (beat.characterState && typeof beat.characterState === 'object') {
+          for (const [cname, state] of Object.entries(beat.characterState)) {
+            if (!state) continue;
+            let row = bible.characters.find((c) => c.name === cname);
+            if (!row) {
+              row = { name: cname };
+              bible.characters.push(row);
+            }
+            row.currentState = String(state);
+          }
+        }
+        // Props → objects
+        for (const prop of beat.props || []) {
+          const pname = String(prop || '').trim();
+          if (!pname) continue;
+          let obj = bible.objects.find((o) => o.name === pname);
+          if (!obj) {
+            bible.objects.push({
+              name: pname,
+              type: 'other',
+              description: pname,
+              currentLocationId: scene.locationId || '',
+              state: 'present',
+            });
+          } else if (scene.locationId) {
+            obj.currentLocationId = scene.locationId;
+          }
+        }
+      }
+    }
+  }
+
+  // Locations / backdrops
+  for (const env of directorPlan.environments || []) {
+    const locationId = env.locationId || env.name;
+    if (!locationId) continue;
+    let loc = bible.locations.find((l) => l.locationId === locationId);
+    if (!loc) {
+      loc = { locationId, name: env.name || locationId };
+      bible.locations.push(loc);
+    }
+    loc.name = env.name || loc.name;
+    loc.description = env.description || loc.description;
+    const day = env.timeVariants?.day;
+    const night = env.timeVariants?.night;
+    if (day && !loc.lighting) loc.lighting = day;
+    if (night && !loc.timeOfDay) loc.timeOfDay = 'night variant: ' + night;
+    if (!loc.type) {
+      const n = String(env.name || '').toUpperCase();
+      loc.type = n.startsWith('INT') ? 'interior' : n.startsWith('EXT') ? 'exterior' : 'interior';
+    }
+  }
+
+  bible.globalRules = Array.from(new Set([
+    ...(bible.globalRules || []),
+    'Keep wardrobe, accessories, and props identical across cuts unless the story changes them.',
+    'Reuse locationId plates — do not redesign rooms between scenes.',
+    'Character identity sheets / reference photos override prompt improvisation.',
+  ]));
+
+  bible.lastUpdated = new Date();
+  await bible.save();
+  return bible;
+}
+
+export default { getContinuityState, extractContinuityPrompt, updateContinuityState, seedContinuityFromDirectorPlan };
