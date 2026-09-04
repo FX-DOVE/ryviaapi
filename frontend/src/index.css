@@ -101,8 +101,10 @@
   /* Mobile bottom tab bar height (excludes safe-area inset, added separately) */
   --bottom-nav-height: 58px;
   --bottom-nav-total: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
-  /* Mobile chrome (hamburger + wallet chip) clearance */
-  --chrome-top-offset: calc(max(12px, env(safe-area-inset-top, 0px)) + 60px); /* ~72px: clear hamburger/wallet + gap */
+  /* Mobile chrome (hamburger + wallet chip) clearance.
+     Push ALL page content fully below the fixed control row:
+     top inset (12px / safe-area) + control height (44px) + gap (24px) ≈ 80px. */
+  --chrome-top-offset: calc(max(12px, env(safe-area-inset-top, 0px)) + 44px + 24px);
   /* Consistent page gutters — mobile-first */
   --page-gutter: 16px;
   --page-gutter-md: 20px;
@@ -2706,15 +2708,23 @@ input[type='file']::file-selector-button:hover {
   .sidebar               { padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom)); }
 
   .bottom-nav            { display: flex; }
-  /* Content needs bottom clearance for the fixed tab bar, in addition to
-     the existing top clearance for the hamburger. */
-  .main-content          { padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom)); }
+  /* Layout-owned chrome clearance: fixed hamburger (top-left) + wallet chip
+     (top-right). Applied on .main-content so every AppPage (Film Studio,
+     Projects, History, Billing) clears the control row — titles sit fully
+     below chrome, not beside it. */
+  .main-content {
+    padding-top: var(--chrome-top-offset);
+    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  }
 
-  /* Add top padding so content isn't hidden behind the fixed hamburger button
-     (44px button at top:12px → 12 + 44 + 12 = 68px, round up to 72px).
-     Horizontal padding is symmetric — the hamburger is fixed-position and
-     floats over content, so we don't need to indent the content body for it. */
-  .page-container        { padding: var(--chrome-top-offset) var(--page-gutter) max(48px, calc(env(safe-area-inset-bottom) + 32px)) var(--page-gutter); }
+  /* Page shell keeps gutters only — top chrome is cleared by .main-content. */
+  .page-container {
+    padding:
+      0
+      var(--page-gutter)
+      max(48px, calc(env(safe-area-inset-bottom) + 32px))
+      var(--page-gutter);
+  }
   .page-title            { font-size: 28px; }
   .section-title         { font-size: 22px; }
 
@@ -2723,8 +2733,8 @@ input[type='file']::file-selector-button:hover {
   .btn:not(.btn-icon):not(.btn-inline):not(.btn-sm) { width: 100%; }
   .btn-icon              { width: 40px; min-height: 40px; }
 
-  /* Dashboard */
-  .dashboard-page        { padding-top: 28px; }
+  /* Dashboard — do not override Layout chrome clearance */
+  .dashboard-page        { padding-top: 0; }
   .dashboard-stats-grid  { grid-template-columns: 1fr; }
   .dashboard-hero-actions .btn { width: 100%; min-width: 0; }
   .dashboard-section-header {
@@ -4449,8 +4459,9 @@ input[type='file']::file-selector-button:hover {
 }
 
 @media (max-width: 768px) {
-  /* Layout clearance uses unified bottom-nav total */
+  /* Layout clearance: top = chrome row, bottom = tab bar */
   .main-content {
+    padding-top: var(--chrome-top-offset);
     padding-bottom: var(--bottom-nav-total);
   }
   .sidebar {
@@ -4468,9 +4479,10 @@ input[type='file']::file-selector-button:hover {
   .mobile-wallet-chip {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   }
+  /* Gutters only — chrome cleared by .main-content */
   .page-container {
     padding:
-      var(--chrome-top-offset)
+      0
       var(--page-gutter)
       max(32px, calc(env(safe-area-inset-bottom, 0px) + 24px))
       var(--page-gutter);
