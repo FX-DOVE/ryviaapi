@@ -46,7 +46,8 @@ export const FILM_PIPELINE_STEPS = [
   'directing',           // decompose into acts / scenes / 8s beats
   'locking',             // character + environment reference images
   'segment_generation',  // keyframe → LTX clip → last frame → next clip
-  'rendering',           // stitch scenes into the film
+  'audio',               // underscore beds from audioSpine; final_mix (native preserved)
+  'rendering',           // stitch scenes + apply mix under native dialogue
   'upload',              // push the film and thumbnail to storage
   'notify',              // enqueued by the upload step itself
 ];

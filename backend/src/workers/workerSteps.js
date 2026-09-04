@@ -6,11 +6,12 @@
  *   Step 2: Directing              — Cinematic Director decomposes into acts/scenes/beats
  *   Step 3: Consistency Locking    — Generate character + environment reference images
  *   Step 4: Segment Generation     — Generate 8s video segments per scene
- *   Step 5: Assembly               — Stitch segments → scenes → acts → final film
- *   Step 6: Upload                 — Upload final film to cloud
- *   Step 7: Notification           — Notify user
+ *   Step 5: Audio Mix              — Underscore beds from audioSpine; duck under native
+ *   Step 6: Assembly               — Stitch scenes; map final_mix (never strip LTX audio)
+ *   Step 7: Upload                 — Upload final film to cloud
+ *   Step 8: Notification           — Notify user
  *
- * No TTS, lip-sync, or audio pipeline — LTX 2.3 generates video WITH native audio.
+ * Drama/movie/anime: LTX native dialogue+ambience is preserved; spine music is underscore only.
  */
 
 import path from 'path';
@@ -24,7 +25,7 @@ import Project from '../models/Project.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 import Screenplay from '../models/Screenplay.js';
 
-import { JOB_STATUS, SCENE_STATUS, SEGMENT_STATUS, outputDir, tempDir, sceneVidDir } from '../config/constants.js';
+import { JOB_STATUS, SCENE_STATUS, SEGMENT_STATUS, outputDir, tempDir, sceneVidDir, audioDir } from '../config/constants.js';
 import { logInfo, logWarn, logError } from '../services/logService.js';
 import { analyzeScript } from '../services/scriptAnalyzer.js';
 import { decomposeScript, planGenerationStrategies, buildBeatPrompts } from '../services/cinematicDirectorEngine.js';
@@ -34,6 +35,7 @@ import { seedContinuityFromDirectorPlan, extractContinuityPrompt } from '../serv
 import { getDirectorBible } from '../services/styleService.js';
 import { getFormatDirective } from '../services/webResearchService.js';
 import { assembleVideo } from '../services/videoAssembler.js';
+import { buildFinalMix, isAudioMixEnabled, isNativeAudioGenre } from '../services/audioMixService.js';
 import { generateThumbnailFromVideo } from '../services/thumbnailService.js';
 import { deleteTempFiles, getFileSize, uploadToCloud } from '../services/storageService.js';
 import { emitJobEvent } from '../config/socket.js';
@@ -815,13 +817,21 @@ export async function processRenderingStep(jobId) {
     });
   }
 
-  // Assemble final video (no narration audio — LTX already has native audio)
+  // Assemble final video — preserve LTX native audio; apply spine mix if present
+  const genreKey = job.genre || job.animationStyle || '';
+  const mixPath = job.audioMix?.mixPath || null;
+  const scorePath = job.audioMix?.scorePath || null;
+  // Narration only for non-native genres (documentary/explainer/etc.) when no mix
+  const narrationPath = null;
   const { finalVideoPath, duration } = await assembleVideo({
     jobId,
     scenes: localScenes,
-    narrationPath: null,  // No separate audio — LTX generates it natively
+    narrationPath,
     srtPath: null,
     subtitleBurnIn: false,
+    mixPath,
+    scorePath,
+    genre: genreKey,
   });
 
   // Generate thumbnail
@@ -903,8 +913,117 @@ export async function processNotificationStep(jobId, type, message, recipient) {
 // ─── Legacy compatibility stubs (for executionEngine.js) ──────────────────────
 
 export async function processAudioStep(jobId) {
-  // No-op: LTX 2.3 generates audio natively. Skip to next step.
-  await logInfo(jobId, 'Audio step skipped — LTX 2.3 generates native audio.');
+  const job = await Job.findById(jobId);
+  if (!job) throw new Error(`Job ${jobId} not found`);
+
+  if (!isAudioMixEnabled()) {
+    await logInfo(jobId, 'Audio mix disabled (AUDIO_MIX_ENABLED=false) — preserving LTX native audio only.');
+    await triggerNextStep(jobId, 'audio');
+    return;
+  }
+
+  await logInfo(jobId, 'Building underscore score from audioSpine (ducked under native dialogue)...');
+
+  // Localize completed scene videos (same as rendering) so durations + streams are known
+  const scenes = await Scene.find({ jobId, status: SCENE_STATUS.DONE }).sort({ sceneNumber: 1 });
+  if (!scenes.length) {
+    await logWarn(jobId, 'Audio step: no completed scenes yet — advancing without mix (assemble will use native only).');
+    await triggerNextStep(jobId, 'audio');
+    return;
+  }
+
+  const jobTempDir = path.join(tempDir(jobId), 'audio_localize');
+  fs.mkdirSync(jobTempDir, { recursive: true });
+  fs.mkdirSync(audioDir(jobId), { recursive: true });
+
+  const localScenes = [];
+  for (const scene of scenes) {
+    if (!scene.videoPath) continue;
+    const filename = `scene_${String(scene.sceneNumber).padStart(4, '0')}.mp4`;
+    const localPath = path.join(jobTempDir, filename);
+    if (!fs.existsSync(localPath)) {
+      try {
+        if (String(scene.videoPath).startsWith('http')) {
+          const res = await axios({ method: 'GET', url: scene.videoPath, responseType: 'stream', timeout: 120000 });
+          const writer = fs.createWriteStream(localPath);
+          res.data.pipe(writer);
+          await new Promise((resolve, reject) => { writer.on('finish', resolve); writer.on('error', reject); });
+        } else if (fs.existsSync(scene.videoPath)) {
+          await fs.promises.copyFile(scene.videoPath, localPath);
+        } else {
+          continue;
+        }
+      } catch (err) {
+        console.warn(`[WorkerSteps] Audio localize scene ${scene.sceneNumber} failed: ${err.message}`);
+        continue;
+      }
+    }
+    localScenes.push({
+      sceneNumber: scene.sceneNumber,
+      duration: scene.duration || 8,
+      videoPath: localPath,
+    });
+  }
+
+  if (!localScenes.length) {
+    await logWarn(jobId, 'Audio step: could not localize any scene videos — advancing without mix.');
+    await triggerNextStep(jobId, 'audio');
+    return;
+  }
+
+  // Load audioSpine + lookBible from screenplay when available
+  let audioSpine = job.directorPlan?.audioSpine || [];
+  let lookBible = job.directorPlan?.lookBible || null;
+  if (job.screenplayId) {
+    try {
+      const screenplay = await Screenplay.findById(job.screenplayId).lean();
+      if (screenplay?.audioSpine?.length) audioSpine = screenplay.audioSpine;
+      if (screenplay?.lookBible) lookBible = screenplay.lookBible;
+    } catch (e) {
+      console.warn(`[WorkerSteps] Screenplay audioSpine load failed: ${e.message}`);
+    }
+  }
+
+  const genreKey = job.genre || job.animationStyle || '';
+  try {
+    const result = await buildFinalMix({
+      jobId,
+      scenes: localScenes,
+      audioSpine,
+      genre: genreKey,
+      videoType: genreKey,
+      lookBible,
+    });
+
+    if (result?.skipped) {
+      await logInfo(jobId, `Audio mix skipped: ${result.reason}`);
+    } else {
+      await Job.findByIdAndUpdate(jobId, {
+        audioMix: {
+          mixPath: result.mixPath || null,
+          scorePath: result.scorePath || null,
+          nativePath: result.nativePath || null,
+          hasNativeAudio: !!result.hasNativeAudio,
+          mode: result.mode || null,
+          totalDuration: result.totalDuration || null,
+        },
+      });
+      const nativeNote = isNativeAudioGenre(genreKey)
+        ? 'Native LTX dialogue preserved; score ducked under dialogue.'
+        : (result.hasNativeAudio
+          ? 'Native audio present; score ducked under dialogue.'
+          : 'No native audio detected; score/ambience-only mix.');
+      await logInfo(
+        jobId,
+        `Audio mix ready (${result.mode}): ${path.basename(result.mixPath || '')} — ${nativeNote}`,
+      );
+    }
+  } catch (err) {
+    // Non-fatal: assembly can still ship with native audio only
+    console.error(`[WorkerSteps] Audio mix failed for ${jobId}: ${err.message}`);
+    await logWarn(jobId, `Audio mix failed (continuing with native audio): ${err.message}`);
+  }
+
   await triggerNextStep(jobId, 'audio');
 }
 

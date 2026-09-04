@@ -293,7 +293,7 @@ async function generateAudioSpine({ scenes, acts, genre, title, jobId = '' }) {
   }));
   const actMusic = (acts || []).map(a => `Act ${a.actNumber}: ${a.musicStyle || 'orchestral'} (${a.emotion || 'neutral'})`).join('; ');
 
-  const systemPrompt = `You are a film music supervisor and sound designer. Plan an audio spine (music, silence, sfx) keyed to scene numbers. Output ONLY raw JSON.`;
+  const systemPrompt = `You are a film music supervisor and sound designer. Plan an audio spine (music, silence, sfx) keyed to scene numbers. This spine is an UNDERSCORE mix layer ducked under LTX native dialogue — never plan score that competes with spoken lines. Silence = score dip, not muted dialogue. Output ONLY raw JSON.`;
   const userPrompt = `FILM: "${title}" GENRE: ${genre}
 ACT MUSIC HINTS: ${actMusic || 'orchestral'}
 SCENES: ${JSON.stringify(digest)}
@@ -304,7 +304,7 @@ Return JSON:
     { "atScene": 0, "type": "music|silence|sfx", "cue": "short cue description", "mood": "mood", "intensity": 1-10 }
   ]
 }
-Rules: include cold-open cue if scene 0 exists; silence before major reveals; sfx for impacts; 8-20 cues total max.`;
+Rules: include cold-open cue if scene 0 exists; silence before major reveals (silence = intentional SCORE DIP under preserved native dialogue — never delete dialogue/ambience); sfx for impacts; music cues are UNDERSCORE ONLY (no competing spoken words or lyric-like dialogue in the score layer); 8-20 cues total max.`;
 
   try {
     const { text } = await generateWithFallback({ systemPrompt, userPrompt, jobId, purpose: 'audio-spine' });

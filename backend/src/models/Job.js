@@ -77,6 +77,16 @@ const jobSchema = new mongoose.Schema(
 
     subtitleBurnIn:  { type: Boolean, default: false },
 
+    // Audio mix stems (underscore score + ducked-under-native final_mix)
+    audioMix: {
+      mixPath:         { type: String, default: null },
+      scorePath:       { type: String, default: null },
+      nativePath:      { type: String, default: null },
+      hasNativeAudio:  { type: Boolean, default: false },
+      mode:            { type: String, default: null },
+      totalDuration:   { type: Number, default: null },
+    },
+
     // Output
     finalVideoPath:  { type: String, default: null },
     thumbnailPath:   { type: String, default: null },

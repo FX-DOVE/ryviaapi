@@ -157,7 +157,7 @@ FILM: "${title}"
 GENRE: ${genre}
 STYLE: ${animationStyle}
 ${worldDna?.country_or_region ? `PHOTOGRAPHED WORLD (mandatory): ${worldDna.country_or_region}. Lighting: ${worldDna.lighting_style || ''}. Architecture: ${worldDna.architectural_and_environment_style || ''}. Place every scene in this real photographed country/setting — do not relocate the story to a generic set.` : ''}
-${(audioSpine && audioSpine.length) ? `AUDIO SPINE (attach matching audioCues on beats near these scenes):\n${audioSpine.slice(0, 30).map(c => `@scene ${c.atScene}: [${c.type}] ${c.cue || ''} (${c.mood || ''})`).join('\n')}` : ''}
+${(audioSpine && audioSpine.length) ? `AUDIO SPINE (underscore mix layer — music/sfx/silence cues mixed UNDER native dialogue later; attach ambience notes to audioCues, NOT competing score dialogue):\n${audioSpine.slice(0, 30).map(c => `@scene ${c.atScene}: [${c.type}] ${c.cue || ''} (${c.mood || ''})`).join('\n')}\nRULE: audioCues tell LTX to generate CLEAR DIALOGUE + ROOM TONE. Spine music is underscore only — never write competing spoken words into the score layer.` : `AUDIO RULE (drama/movie/anime): audioCues must request clear intelligible dialogue + natural room tone/ambience for LTX native audio. Score/music is planned separately as underscore and must not compete with dialogue.`}
 ${additionalNotes ? `DIRECTOR'S NOTES: ${additionalNotes}` : ''}
 
 RAW SCRIPT:
@@ -201,7 +201,7 @@ Produce a JSON object with this EXACT structure:
               "accessories": { "Character Name": "what this character wears or carries in THIS beat if it differs from their default outfit" },
               "characterState": { "Character Name": "physical state right now — sweating, bleeding, tear-stained, soaked, dust-covered, hair loose" },
               "voiceDirection": "Acoustic and emotional acting direction (e.g. 'Frustrated, voice elevated, restrained bitterness, strong emphasis on key words')",
-              "audioCues": "Sound design notes (e.g. 'quiet sitting-room ambience, walking stick tap on marble floor, natural breathing, no music')",
+              "audioCues": "LTX native audio direction: clear intelligible dialogue + room tone/ambience/Foley. Do NOT put score/music lyrics here — spine music is underscore-only and mixed later. Example: 'clear spoken dialogue, quiet sitting-room ambience, walking stick tap on marble, natural breathing, soft room tone'",
               "startFrameVisual": "Exact visual starting state of the shot (framing, character posture, eye direction, expression before action begins)",
               "endFrameVisual": "Exact visual ending state of the shot (expression after dialogue, posture shift, held reaction)",
               "emotionalContinuity": "Emotional progression transition from previous beat (e.g. 'controlled anger -> deeper hurt -> raw hurt')",
@@ -675,8 +675,8 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     emotionHint,
     charBlock,
     envBlock,
-    beat.audioCues ? `[SOUND DESIGN & AUDIO]: ${beat.audioCues}` : '',
-    beat.audioSpineCue ? `[AUDIO SPINE]: [${beat.audioSpineCue.type}] ${beat.audioSpineCue.cue || ''}` : '',
+    beat.audioCues ? `[SOUND DESIGN & AUDIO — LTX native dialogue+ambience]: ${beat.audioCues}` : '',
+    beat.audioSpineCue ? `[AUDIO SPINE underscore only — no competing dialogue in score]: [${beat.audioSpineCue.type}] ${beat.audioSpineCue.cue || ''}` : '',
     anime
       ? 'Smooth anime motion, locked character designs, expressive eyes, focused conversational eyelines'
       : 'Smooth fluid motion, consistent character appearance, realistic human movement, practical lighting, focused conversational eyelines',
