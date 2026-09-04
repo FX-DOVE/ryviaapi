@@ -36,6 +36,14 @@ const continuityLocationSchema = new mongoose.Schema({
   description: { type: String }
 }, { _id: false });
 
+const lookBibleSchema = new mongoose.Schema({
+  colorGrade:          { type: String, default: '' },
+  lensLanguage:        { type: String, default: '' },
+  lightingRecipe:      { type: String, default: '' },
+  filmStock:           { type: String, default: '' },
+  animationStyleNotes: { type: String, default: '' },
+}, { _id: false });
+
 const continuitySchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true, index: true },
   screenplayId: { type: mongoose.Schema.Types.ObjectId, ref: 'Screenplay' },
@@ -43,6 +51,9 @@ const continuitySchema = new mongoose.Schema({
   objects: [continuityObjectSchema],
   locations: [continuityLocationSchema],
   globalRules: [{ type: String }], // Overarching continuity rules
+  // Visual look lock shared with Screenplay lookBible
+  lookBible: { type: lookBibleSchema, default: () => ({}) },
+  motifs: [{ type: String }],
   lastUpdated: { type: Date, default: Date.now }
 }, { timestamps: true });
 

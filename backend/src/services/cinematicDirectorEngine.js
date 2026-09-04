@@ -14,8 +14,10 @@
 
 import { generateWithFallback } from '../providers/reasoningProvider.js';
 import { SEGMENT_DURATION_SEC, MAX_SEGMENTS_PER_SCENE, GENERATION_STRATEGY, DIRECTOR_SCRIPT_CHAR_LIMIT } from '../config/constants.js';
-import { getDirectorBible, getStyleModifiers, resolveStylePreset } from './styleService.js';
+import { getDirectorBible, getStyleModifiers, resolveStylePreset, formatLookBibleBlock } from './styleService.js';
 import { FORMAT_SPECIFIC_DIRECTIVES } from './webResearchService.js';
+import { formatCoverageDirective } from './coverageTemplates.js';
+import { formatEmotionPictureHint, getEmotionPicture } from './emotionPictureMap.js';
 
 export function parseAndRepairJson(rawText) {
   if (!rawText || typeof rawText !== 'string') {
@@ -99,6 +101,7 @@ export function parseAndRepairJson(rawText) {
 export async function decomposeScript({
   rawScript, title, genre = 'drama', animationStyle = 'cinematic',
   additionalNotes = '', jobId = '', screenplayScenes = null, worldDna = null,
+  lookBible = null, motifs = null, audioSpine = null,
 }) {
   console.log(`[CinematicDirector] Stage 1: Decomposing script for "${title}"...`);
 
@@ -137,6 +140,12 @@ VISUAL STYLE LOCK FOR THIS SHOW:
 - Color: ${styleMods.colorModifiers}
 - Motion: ${styleMods.motionModifiers}
 
+${formatLookBibleBlock(lookBible)}
+${formatCoverageDirective(genreKey)}
+${(motifs && motifs.length) ? `VISUAL MOTIFS (reference in act openers/closers and cold-open beats): ${motifs.join(' | ')}` : ''}
+
+EMOTION→PICTURE: When a scene emotion is set, prefer the mapped camera/color (betrayal→dutch+cool, romance→warm CU, etc.). Apply ${formatEmotionPictureHint('betrayal')} style logic per scene emotion.
+
 CRITICAL DIRECTIVE — DIALOGUE FIDELITY:
 When the script includes dialogue lines marked as FINAL or VERBATIM, you MUST preserve them EXACTLY as written. Do NOT paraphrase, rewrite, summarize, or invent new dialogue. The screenplay's dialogue has been approved by the writer. Your job is to DIRECT it (plan camera, blocking, beats), not REWRITE it.
 
@@ -148,6 +157,7 @@ FILM: "${title}"
 GENRE: ${genre}
 STYLE: ${animationStyle}
 ${worldDna?.country_or_region ? `PHOTOGRAPHED WORLD (mandatory): ${worldDna.country_or_region}. Lighting: ${worldDna.lighting_style || ''}. Architecture: ${worldDna.architectural_and_environment_style || ''}. Place every scene in this real photographed country/setting — do not relocate the story to a generic set.` : ''}
+${(audioSpine && audioSpine.length) ? `AUDIO SPINE (attach matching audioCues on beats near these scenes):\n${audioSpine.slice(0, 30).map(c => `@scene ${c.atScene}: [${c.type}] ${c.cue || ''} (${c.mood || ''})`).join('\n')}` : ''}
 ${additionalNotes ? `DIRECTOR'S NOTES: ${additionalNotes}` : ''}
 
 RAW SCRIPT:
@@ -281,9 +291,40 @@ Output ONLY the raw JSON. No markdown, no explanation.`;
         beat.globalBeatNumber = globalBeat;
         beat.duration = beat.duration || SEGMENT_DURATION_SEC;
         carried = normalizeContinuityFields(beat, carried, globalBeat);
+
+        // Emotion → picture defaults on beat camera / mood metadata
+        const emoKey = beat.mood || scene.emotion || 'neutral';
+        const pic = getEmotionPicture(emoKey);
+        if (!beat.cameraAngle || beat.cameraAngle === 'medium_wide') {
+          if (['betrayal', 'fearful', 'crying', 'romance', 'romantic', 'angry'].some(k => String(emoKey).toLowerCase().includes(k))) {
+            beat.cameraAngle = pic.camera;
+          }
+        }
+        beat.emotionPicture = {
+          colorLighting: pic.colorLighting,
+          dof: pic.dof,
+          microExpression: pic.microExpression,
+        };
+
+        // Attach audioSpine cue metadata when scene numbers align
+        if (Array.isArray(audioSpine) && audioSpine.length) {
+          const sceneNum = scene.sceneNumber || scene.globalSceneNumber;
+          const cue = audioSpine.find(c => Number(c.atScene) === Number(sceneNum));
+          if (cue) {
+            beat.audioSpineCue = cue;
+            if (!beat.audioCues) {
+              beat.audioCues = `[${cue.type}] ${cue.cue || ''} (${cue.mood || ''}, intensity ${cue.intensity || 5})`;
+            }
+          }
+        }
       }
     }
   }
+
+  // Persist pack metadata on the plan for downstream segment generation
+  plan.lookBible = lookBible || plan.lookBible || null;
+  plan.motifs = motifs || plan.motifs || [];
+  plan.audioSpine = audioSpine || plan.audioSpine || [];
 
   plan.totalScenes = globalScene;
   plan.totalBeats = globalBeat;
@@ -502,6 +543,11 @@ function isAnimeStyle(animationStyle = '') {
 }
 
 export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environmentLock = '', animationStyle = 'cinematic', options = {}) {
+  const lookBibleBlock = options.lookBibleBlock || formatLookBibleBlock(options.lookBible) || '';
+  const emotionHint = formatEmotionPictureHint(beat.mood || scene.emotion || 'neutral');
+  const motifHint = (options.motifs || []).length
+    ? `Motif echo: ${(options.motifs || []).slice(0, 2).join('; ')}`
+    : '';
   // Director-plan scenes carry `characters`; Scene documents carry `characterNames`.
   const beatCharacters = (scene.characters?.length ? scene.characters : scene.characterNames) || [];
   const charLockLines = beatCharacters
@@ -575,25 +621,33 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     ? 'CRITICAL: Match the exact character designs, hair, eye shape, and costume silhouette from reference sheets. Do not redesign the character.'
     : 'CRITICAL: Match the exact character faces, skin tones, and clothing from reference images. Realistic human skin texture, natural pores and complexion, unretouched, no airbrushing, no plastic sheen';
 
+  const emotionLighting = beat.emotionPicture?.colorLighting
+    || getEmotionPicture(beat.mood || scene.emotion).colorLighting;
   const imagePrompt = [
     identityPrefix,
     cameraDesc.imageFraming,
+    lookBibleBlock,
     `Scene: ${scene.location || 'unspecified location'}`,
     envBlock,
     charBlock,
     wardrobeBlock,
     continuityBibleBlock,
     beat.startFrameVisual ? `Start Frame: ${beat.startFrameVisual}` : `Action: ${beat.action}`,
+    scene.enrichedVisual ? `Enriched visual: ${scene.enrichedVisual}` : '',
+    scene.beautyNotes ? `Beauty: ${scene.beautyNotes}` : '',
+    motifHint,
     gazeBlock,
-    beat.expression ? `Expression: ${beat.expression}` : '',
+    beat.expression ? `Expression: ${beat.expression}` : (beat.emotionPicture?.microExpression ? `Expression: ${beat.emotionPicture.microExpression}` : ''),
     stateBlock,
     accessoryBlock,
     propBlock,
     continuityBlock,
     `Mood: ${beat.mood || scene.emotion || 'neutral'}, intensity ${scene.intensity || 5}/10`,
+    emotionHint,
     anime
-      ? `Lighting: ${scene.timeOfDay || 'day'} anime lighting, painted background ambience`
-      : `Lighting: natural ${scene.timeOfDay || 'day'} cinematic 3-point lighting, practical film set lights`,
+      ? `Lighting: ${scene.timeOfDay || 'day'} anime lighting, painted background ambience, ${emotionLighting}`
+      : `Lighting: ${emotionLighting || `natural ${scene.timeOfDay || 'day'} cinematic 3-point lighting, practical film set lights`}`,
+    beat.emotionPicture?.dof || '',
     identitySuffix,
   ].filter(Boolean).join('. ');
 
@@ -617,9 +671,12 @@ export function buildBeatPrompts(beat, scene, act, characterLocks = {}, environm
     propBlock,
     continuityBibleBlock,
     `Mood: ${beat.mood || scene.emotion || 'neutral'}`,
+    lookBibleBlock,
+    emotionHint,
     charBlock,
     envBlock,
     beat.audioCues ? `[SOUND DESIGN & AUDIO]: ${beat.audioCues}` : '',
+    beat.audioSpineCue ? `[AUDIO SPINE]: [${beat.audioSpineCue.type}] ${beat.audioSpineCue.cue || ''}` : '',
     anime
       ? 'Smooth anime motion, locked character designs, expressive eyes, focused conversational eyelines'
       : 'Smooth fluid motion, consistent character appearance, realistic human movement, practical lighting, focused conversational eyelines',

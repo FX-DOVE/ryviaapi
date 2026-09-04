@@ -168,7 +168,23 @@ Return a JSON object with EXACTLY these fields:
     }
   ],
   "videoTypeDirectives": "2-3 sentences explaining how this script was tailored to ${videoType} (e.g. specific camera, emotional acting, B-roll, or trailer cues)",
-  "researchHighlights": "1-2 sentences summarizing the real-world truth or trending storytelling angle incorporated"
+  "researchHighlights": "1-2 sentences summarizing the real-world truth or trending storytelling angle incorporated",
+  "motifs": ["2 or 3 recurring visual images that can reappear across acts (e.g. 'a cracked wedding ring on marble', 'rain on a red umbrella')"],
+  "lookBible": {
+    "colorGrade": "specific color grade for this story (e.g. 'warm amber practicals against cool teal shadows')",
+    "lensLanguage": "preferred lenses / framing language (e.g. 'anamorphic 40mm wides, 85mm intimate CUs')",
+    "lightingRecipe": "practical lighting recipe (e.g. 'single practical lamp key, soft window fill, motivated neon rim')",
+    "filmStock": "film stock / grain notes (e.g. 'Kodak Vision3 500T with fine grain')",
+    "animationStyleNotes": "style lock notes matching ${videoType}"
+  },
+  "coldOpenSeed": {
+    "hookLine": "One sentence promise that hooks the viewer in under 3 seconds",
+    "action": "First ~8 seconds of pure visual action",
+    "location": "INT./EXT. LOCATION - TIME",
+    "cameraType": "close_up|extreme_close_up|wide_establishing|dutch_angle",
+    "emotion": "dominant emotion of the cold open",
+    "hookVisual": "Short vivid image prompt for the opening plate"
+  }
 }
 
 Output ONLY raw JSON.`;
@@ -192,6 +208,9 @@ Output ONLY raw JSON.`;
       suggestedCharacters: Array.isArray(result.suggestedCharacters) ? result.suggestedCharacters : [],
       videoTypeDirectives: result.videoTypeDirectives || '',
       researchHighlights: result.researchHighlights || '',
+      motifs: Array.isArray(result.motifs) ? result.motifs.slice(0, 3).map(String) : [],
+      lookBible: normalizeLookBible(result.lookBible),
+      coldOpenSeed: result.coldOpenSeed && typeof result.coldOpenSeed === 'object' ? result.coldOpenSeed : null,
     };
   } catch (err) {
     console.error('[WebResearchService] Expansion LLM failed, using fallback:', err.message);
@@ -202,8 +221,22 @@ Output ONLY raw JSON.`;
       suggestedCharacters: [],
       videoTypeDirectives: '',
       researchHighlights: '',
+      motifs: [],
+      lookBible: normalizeLookBible(null),
+      coldOpenSeed: null,
     };
   }
+}
+
+function normalizeLookBible(lb) {
+  const src = lb && typeof lb === 'object' ? lb : {};
+  return {
+    colorGrade: String(src.colorGrade || '').trim(),
+    lensLanguage: String(src.lensLanguage || '').trim(),
+    lightingRecipe: String(src.lightingRecipe || '').trim(),
+    filmStock: String(src.filmStock || src.filmStockGrain || '').trim(),
+    animationStyleNotes: String(src.animationStyleNotes || '').trim(),
+  };
 }
 
 
@@ -211,4 +244,182 @@ Output ONLY raw JSON.`;
 export function getFormatDirective(videoType = 'drama') {
   const key = String(videoType || 'drama').toLowerCase().trim();
   return FORMAT_SPECIFIC_DIRECTIVES[key] || FORMAT_SPECIFIC_DIRECTIVES.drama;
+}
+
+/**
+ * Generate 3 distinct concept enticement options (A/B/C) with different tones/looks.
+ * Used by description-mode Film Studio before the user commits to a full generate.
+ *
+ * Contract (response.options[]):
+ *   { id, title, tone, logline, lookSummary, motifs[], expandedSynopsis?,
+ *     lookBible?, suggestedCharacters?[{ name, role, physicalDescription, backstory? }] }
+ */
+export async function generateConceptOptions({
+  title = '',
+  synopsis = '',
+  videoType = 'drama',
+  genre = '',
+  jobId = '',
+}) {
+  const typeKey = String(videoType || genre || 'drama').toLowerCase();
+  const formatDirective = FORMAT_SPECIFIC_DIRECTIVES[typeKey] || FORMAT_SPECIFIC_DIRECTIVES.drama;
+
+  const cleanSynopsis = String(synopsis || '').replace(/[^\w\s]/g, ' ').slice(0, 100);
+  const searchQuery = `${cleanSynopsis} ${typeKey} cinematic concepts visual tone`.trim();
+  const webSnippets = await fetchWebResearch(searchQuery, { timeoutMs: 3000 });
+  const researchContext = webSnippets.length > 0
+    ? `LIVE WEB RESEARCH:\n${webSnippets.map((s, i) => `[${i + 1}] ${s}`).join('\n')}\n`
+    : 'Rely on known cinematic tropes and viral storytelling angles.\n';
+
+  const systemPrompt = `You are an elite creative director pitching three alternate film concepts.
+Each option must feel DISTINCT in tone, visual look, and emotional hook — same seed idea, three different executions.
+Tailor every option to this video type:
+${formatDirective}
+
+Output ONLY valid raw JSON (no markdown).`;
+
+  const userPrompt = `Seed idea for three concept options:
+
+TITLE: "${title || 'Untitled'}"
+SYNOPSIS: "${synopsis}"
+VIDEO TYPE: ${typeKey}
+
+${researchContext}
+
+Return JSON with EXACTLY this shape:
+{
+  "options": [
+    {
+      "id": "A",
+      "title": "Option title",
+      "tone": "short tone label (e.g. Intimate & grounded)",
+      "logline": "One-sentence pitch",
+      "lookSummary": "2-3 sentences on visual look / cinematography / palette",
+      "motifs": ["motif1", "motif2", "motif3"],
+      "expandedSynopsis": "2 paragraphs of the story angle for this option",
+      "lookBible": "Compact visual bible: lighting, color grade, camera language, wardrobe cues, locations",
+      "suggestedCharacters": [
+        {
+          "name": "Name",
+          "role": "protagonist|antagonist|supporting",
+          "physicalDescription": "Vivid physical look for AI image gen",
+          "backstory": "One-line motivation"
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Exactly 3 options with ids "A", "B", "C".
+- Option A: intimate / character-driven.
+- Option B: high-stakes / cinematic spectacle.
+- Option C: stylized / bold / unexpected.
+- Each option needs 2-4 suggestedCharacters with strong physicalDescription.
+- Titles may polish the user's title but stay recognizable.
+
+Output ONLY raw JSON.`;
+
+  const fallbackOptions = buildFallbackConceptOptions({ title, synopsis, videoType: typeKey });
+
+  try {
+    const { text } = await generateWithFallback({
+      systemPrompt,
+      userPrompt,
+      jobId,
+      purpose: 'concept-options',
+      temperature: 0.8,
+    });
+
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const result = JSON.parse(cleaned);
+    const raw = Array.isArray(result?.options) ? result.options : [];
+    const normalized = normalizeConceptOptions(raw, { title, synopsis, videoType: typeKey });
+    return { options: normalized.length === 3 ? normalized : fallbackOptions };
+  } catch (err) {
+    console.error('[WebResearchService] concept-options LLM failed, using fallback:', err.message);
+    return { options: fallbackOptions };
+  }
+}
+
+function normalizeConceptOptions(raw, { title, synopsis, videoType }) {
+  const ids = ['A', 'B', 'C'];
+  return raw.slice(0, 3).map((opt, i) => {
+    const id = String(opt?.id || ids[i]).toUpperCase().slice(0, 8) || ids[i];
+    const chars = Array.isArray(opt?.suggestedCharacters) ? opt.suggestedCharacters : [];
+    return {
+      id,
+      title: String(opt?.title || title || `Concept ${id}`).trim(),
+      tone: String(opt?.tone || defaultToneForIndex(i)).trim(),
+      logline: String(opt?.logline || synopsis || '').trim().slice(0, 280),
+      lookSummary: String(opt?.lookSummary || '').trim(),
+      motifs: Array.isArray(opt?.motifs)
+        ? opt.motifs.map(m => String(m).trim()).filter(Boolean).slice(0, 6)
+        : [],
+      expandedSynopsis: String(opt?.expandedSynopsis || synopsis || '').trim(),
+      lookBible: String(opt?.lookBible || opt?.lookSummary || '').trim(),
+      suggestedCharacters: chars.slice(0, 6).map(c => ({
+        name: String(c?.name || 'Character').trim(),
+        role: String(c?.role || 'supporting').trim(),
+        physicalDescription: String(c?.physicalDescription || '').trim(),
+        backstory: String(c?.backstory || '').trim(),
+      })),
+      videoType: videoType || 'drama',
+    };
+  });
+}
+
+function defaultToneForIndex(i) {
+  return ['Intimate & grounded', 'High-stakes cinematic', 'Stylized & bold'][i] || 'Cinematic';
+}
+
+function buildFallbackConceptOptions({ title, synopsis, videoType }) {
+  const baseTitle = title || 'Untitled';
+  const seed = synopsis || 'A compelling human story.';
+  const presets = [
+    {
+      id: 'A',
+      tone: 'Intimate & grounded',
+      lookSummary: 'Natural light, handheld closeness, muted earth tones, quiet emotional coverage.',
+      motifs: ['close-ups', 'everyday spaces', 'soft dawn light'],
+      lookBible: 'Soft natural key light, warm earth palette, handheld intimacy, shallow depth of field, wardrobe in lived-in neutrals.',
+    },
+    {
+      id: 'B',
+      tone: 'High-stakes cinematic',
+      lookSummary: 'Wide establishing frames, dramatic contrast, sweeping camera moves, epic score energy.',
+      motifs: ['silhouette', 'storm light', 'rising stakes'],
+      lookBible: 'High-contrast cinematic grade, motivated hard light, drone/wide masters into OTS coverage, bold wardrobe silhouettes.',
+    },
+    {
+      id: 'C',
+      tone: 'Stylized & bold',
+      lookSummary: 'Graphic color pops, expressive framing, rhythmic cuts, memorable visual signatures.',
+      motifs: ['color accents', 'symmetry', 'symbolic props'],
+      lookBible: 'Stylized color grade with one signature accent color, graphic compositions, Dutch tilts sparingly, costume as visual motif.',
+    },
+  ];
+
+  return presets.map((p) => ({
+    ...p,
+    title: `${baseTitle}${p.id === 'A' ? '' : ` (${p.id})`}`,
+    logline: seed.slice(0, 180),
+    expandedSynopsis: seed,
+    motifs: p.motifs,
+    suggestedCharacters: [
+      {
+        name: 'Lead',
+        role: 'protagonist',
+        physicalDescription: 'Expressive face, distinctive silhouette, wardrobe that reads clearly in medium close-up.',
+        backstory: 'Carries the emotional core of the story.',
+      },
+      {
+        name: 'Counterforce',
+        role: 'antagonist',
+        physicalDescription: 'Contrasting look to the lead — sharper lines, cooler palette, controlled posture.',
+        backstory: 'Embodies the central conflict.',
+      },
+    ],
+    videoType: videoType || 'drama',
+  }));
 }

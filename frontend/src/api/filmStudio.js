@@ -40,6 +40,13 @@ export const screenplaysApi = {
   researchExpand: (data) =>
     api.post(`${BASE}/screenplays/research-expand`, data),
 
+  /** Description-mode A/B/C concept cards.
+   *  Body: { title, synopsis, videoType|genre }
+   *  → { options: [{ id, title, tone, logline, lookSummary, motifs[], expandedSynopsis?, lookBible?, suggestedCharacters? }] }
+   */
+  conceptOptions: (data) =>
+    api.post(`${BASE}/screenplays/concept-options`, data),
+
   updateScene: (id, sceneNumber, data) =>
     api.patch(`${BASE}/screenplays/${id}/scenes/${sceneNumber}`, data),
 

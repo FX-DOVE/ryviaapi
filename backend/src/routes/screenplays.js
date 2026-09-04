@@ -5,7 +5,7 @@ import FilmCharacter from '../models/FilmCharacter.js';
 import Job from '../models/Job.js';
 import Project from '../models/Project.js';
 import { createScreenplayDraft, runScreenplayGeneration, regenerateScreenplay } from '../services/screenplayService.js';
-import { researchAndExpandConcept } from '../services/webResearchService.js';
+import { researchAndExpandConcept, generateConceptOptions } from '../services/webResearchService.js';
 import { startJobPipeline } from '../services/executionEngine.js';
 import { SCREENPLAY_PIPELINE_STEPS } from '../config/constants.js';
 import { logInfo } from '../services/logService.js';
@@ -25,6 +25,32 @@ router.post('/research-expand', async (req, res, next) => {
       title: title || '',
       synopsis,
       videoType: type,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+
+// ── Concept options (A/B/C) for description-mode enticement ───────────────────
+// Body: { title, synopsis, videoType|genre }
+// Returns: { options: [{ id, title, tone, logline, lookSummary, motifs[],
+//   expandedSynopsis?, lookBible?, suggestedCharacters?[] }] }
+router.post('/concept-options', async (req, res, next) => {
+  try {
+    const { title, synopsis, videoType, genre } = req.body;
+    if (!synopsis || !String(synopsis).trim()) {
+      return res.status(400).json({ error: 'A short description or synopsis is required' });
+    }
+
+    const type = videoType || genre || 'drama';
+    const result = await generateConceptOptions({
+      title: title || '',
+      synopsis,
+      videoType: type,
+      genre: type,
     });
 
     res.json(result);
@@ -74,6 +100,7 @@ router.patch('/:id', async (req, res, next) => {
     const allowed = [
       'title', 'synopsis', 'storyBible', 'styleGuide', 'rawScript',
       'acts', 'scenes', 'characters', 'genre', 'tone', 'themes',
+      'selectedConceptId', 'lookBible', 'additionalSettings',
     ];
     for (const field of allowed) {
       if (req.body[field] !== undefined) screenplay[field] = req.body[field];
@@ -113,7 +140,8 @@ router.post('/generate', async (req, res, next) => {
     const {
       title, genre, synopsis, tone, themes,
       animationStyle, targetDurationMinutes,
-      filmCharacterIds, projectId, additionalSettings
+      filmCharacterIds, projectId, additionalSettings,
+      selectedConceptId, lookBible, motifs,
     } = req.body;
 
     if (!title) return res.status(400).json({ error: 'Film title is required' });
@@ -172,6 +200,21 @@ router.post('/generate', async (req, res, next) => {
     // multi-stage LLM run (1-3 min) is fired detached below, so a backend restart
     // mid-generation can never strand an in-flight HTTP request — startup recovery
     // resumes the doc instead.
+    // Concept-options may send lookBible as free-text; structured object also accepted.
+    // Persist selectedConceptId + seed lookBible (string → animationStyleNotes) and merge
+    // a human-readable LOOK BIBLE block into additionalSettings for older prompts.
+    const lookBibleSeed = (lookBible && typeof lookBible === 'object')
+      ? lookBible
+      : (typeof lookBible === 'string' ? lookBible.trim() : '');
+    const lookBibleText = typeof lookBibleSeed === 'string'
+      ? lookBibleSeed
+      : [lookBibleSeed.colorGrade, lookBibleSeed.lightingRecipe, lookBibleSeed.lensLanguage, lookBibleSeed.animationStyleNotes]
+          .filter(Boolean).join(' | ');
+    const mergedSettings = [
+      additionalSettings || '',
+      lookBibleText ? `LOOK BIBLE (from selected concept ${selectedConceptId || ''}):\n${lookBibleText}` : '',
+    ].filter(Boolean).join('\n\n');
+
     const screenplay = await createScreenplayDraft({
       title,
       genre: genre || 'drama',
@@ -181,7 +224,10 @@ router.post('/generate', async (req, res, next) => {
       animationStyle: animationStyle || 'cinematic',
       targetDurationMinutes: parseInt(targetDurationMinutes) || 90,
       filmCharacterIds: filmCharacterIds || [],
-      additionalSettings: additionalSettings || '',
+      additionalSettings: mergedSettings,
+      selectedConceptId: selectedConceptId || '',
+      lookBible: lookBibleSeed || null,
+      motifs: Array.isArray(motifs) ? motifs : [],
       workspaceId: req.workspaceId,
       projectId: resolvedProjectId,
       createdBy: req.userId,

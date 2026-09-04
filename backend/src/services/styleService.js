@@ -243,6 +243,67 @@ export const CAMERA_PROMPT_MAP = {
   slow_zoom:    'slow deliberate zoom towards subject, building cinematic tension'
 };
 
+
+/**
+ * Build a default look bible from genre + synopsis when LLM research is thin.
+ */
+export function buildDefaultLookBible(genreOrVideoType = 'drama', animationStyle = 'cinematic', synopsis = '') {
+  const styleMods = getStyleModifiers(animationStyle || genreOrVideoType);
+  const key = String(genreOrVideoType || 'drama').toLowerCase().trim();
+  const stockByType = {
+    documentary: '16mm documentary grain, slight weave',
+    anime: 'clean digital cel with soft film emulation grain',
+    '2d_anime': 'clean digital cel with soft film emulation grain',
+    commercial: 'clean digital ARRI Alexa, minimal grain',
+    music_video: 'high-contrast digital with stylized grain overlays',
+    cinematic_trailer: '35mm Vision3 500T, anamorphic flare',
+    explainer: 'clean digital, soft key, minimal grain',
+    drama: 'Kodak Vision3 500T, fine cinematic grain',
+    movie: 'Kodak Vision3 250D day / 500T night, anamorphic',
+  };
+  return {
+    colorGrade: styleMods.colorModifiers || 'cinematic color grade',
+    lensLanguage: key === 'anime'
+      ? 'dynamic anime angles, 35–85mm equivalent, eye ECUs'
+      : 'anamorphic 40mm wides, 50mm dialogue, 85mm intimate CUs',
+    lightingRecipe: styleMods.visualModifiers?.includes('natural')
+      ? 'motivated practicals, natural ambient fill'
+      : 'motivated practical key, soft fill, subtle rim',
+    filmStock: stockByType[key] || stockByType.drama,
+    animationStyleNotes: `${animationStyle}: ${styleMods.visualModifiers}`,
+  };
+}
+
+/**
+ * Merge research lookBible with defaults; never leave empty critical fields.
+ */
+export function finalizeLookBible(partial, genreOrVideoType = 'drama', animationStyle = 'cinematic', synopsis = '') {
+  const defaults = buildDefaultLookBible(genreOrVideoType, animationStyle, synopsis);
+  const src = partial && typeof partial === 'object' ? partial : {};
+  return {
+    colorGrade: String(src.colorGrade || defaults.colorGrade).trim(),
+    lensLanguage: String(src.lensLanguage || defaults.lensLanguage).trim(),
+    lightingRecipe: String(src.lightingRecipe || defaults.lightingRecipe).trim(),
+    filmStock: String(src.filmStock || defaults.filmStock).trim(),
+    animationStyleNotes: String(src.animationStyleNotes || defaults.animationStyleNotes).trim(),
+  };
+}
+
+/**
+ * Prompt block injected into director + keyframe paths.
+ */
+export function formatLookBibleBlock(lookBible) {
+  if (!lookBible || typeof lookBible !== 'object') return '';
+  const lines = [];
+  if (lookBible.colorGrade) lines.push(`Color grade: ${lookBible.colorGrade}`);
+  if (lookBible.lensLanguage) lines.push(`Lens language: ${lookBible.lensLanguage}`);
+  if (lookBible.lightingRecipe) lines.push(`Lighting recipe: ${lookBible.lightingRecipe}`);
+  if (lookBible.filmStock) lines.push(`Film stock / grain: ${lookBible.filmStock}`);
+  if (lookBible.animationStyleNotes) lines.push(`Style notes: ${lookBible.animationStyleNotes}`);
+  if (!lines.length) return '';
+  return `LOOK BIBLE (LOCK — apply to every shot):\n${lines.join('\n')}`;
+}
+
 export async function enrichScenePrompt(rawPrompt, sceneConfig, project = null) {
   let promptParts = [];
 
@@ -312,4 +373,4 @@ export function getCinematicLetterboxFilter() {
   return 'drawbox=y=0:h=ih*0.12:color=black:t=fill,drawbox=y=ih-ih*0.12:h=ih*0.12:color=black:t=fill';
 }
 
-export default { enrichScenePrompt, getColorGradeFilter, getCinematicLetterboxFilter, STYLE_PRESETS, MODE_TO_STYLE_PRESET, DIRECTOR_BIBLES, resolveStylePreset, getDirectorBible, getStyleModifiers };
+export default { enrichScenePrompt, getColorGradeFilter, getCinematicLetterboxFilter, STYLE_PRESETS, MODE_TO_STYLE_PRESET, DIRECTOR_BIBLES, resolveStylePreset, getDirectorBible, getStyleModifiers, buildDefaultLookBible, finalizeLookBible, formatLookBibleBlock };

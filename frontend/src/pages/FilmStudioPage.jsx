@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Settings, 
   Film, User, Clapperboard, Users, Folder, Lightbulb, Tag, Music, Ticket,
   Edit2, Trash2, AlertTriangle, CheckCircle, ListChecks, Save,
-  Video, BookOpen, Camera, UploadCloud, X, Plus, Sparkles,
+  Video, BookOpen, Camera, UploadCloud, X, Plus, Sparkles, Check,
 } from 'lucide-react';
 import { filmCharactersApi, screenplaysApi } from '../api/filmStudio';
 import { getProject, createProject, updateProject } from '../api/projects';
@@ -13,6 +13,8 @@ import { useConfirm } from '../components/ui/ConfirmDialog';
 import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
 import { AppButton } from '../components/ui/AppButton';
+import { AppCard } from '../components/ui/AppCard';
+import { Skeleton } from '../components/ui/Skeleton';
 import InsufficientFunds from '../components/InsufficientFunds';
 import { estimateProduction, formatUsd, isInsufficientFunds, fundsError } from '../api/billing';
 
@@ -37,10 +39,81 @@ const ASPECT_RATIOS = [
   { id: '4:3', label: 'Classic' },
 ];
 
+
+/** True when the synopsis looks like a pasted screenplay (skip A/B/C enticement). */
+function looksLikeUploadedScript(text = '') {
+  const t = String(text || '');
+  if (t.length > 2000) return true;
+  return /\b(INT\.|EXT\.|FADE IN|CUT TO:|SCENE\s+\d+)/i.test(t);
+}
+
+const CONCEPT_LETTER_COLORS = {
+  A: 'hsl(262, 70%, 48%)',
+  B: 'hsl(200, 75%, 42%)',
+  C: 'hsl(28, 85%, 48%)',
+};
+
+function ConceptOptionCard({ option, selected, onSelect, letter }) {
+  const color = CONCEPT_LETTER_COLORS[letter] || CONCEPT_LETTER_COLORS.A;
+  return (
+    <button
+      type="button"
+      className={`concept-option-card ${selected ? 'selected' : ''}`}
+      onClick={() => onSelect(option)}
+      aria-pressed={selected}
+    >
+      <div className="concept-option-card-top">
+        <span className="concept-option-letter" style={{ background: color }}>{letter}</span>
+        <div className="concept-option-meta">
+          <div className="concept-option-title">{option.title}</div>
+          <div className="concept-option-tone">{option.tone}</div>
+        </div>
+        {selected && (
+          <span className="concept-option-check" aria-hidden="true">
+            <Check size={14} />
+          </span>
+        )}
+      </div>
+      {option.logline && <p className="concept-option-logline">{option.logline}</p>}
+      {option.lookSummary && (
+        <p className="concept-option-look"><span>Look:</span> {option.lookSummary}</p>
+      )}
+      {Array.isArray(option.motifs) && option.motifs.length > 0 && (
+        <div className="concept-option-motifs">
+          {option.motifs.slice(0, 4).map((m) => (
+            <span key={m} className="concept-motif-chip">{m}</span>
+          ))}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function ConceptOptionsSkeleton() {
+  return (
+    <div className="concept-options-grid" aria-busy="true" aria-label="Loading concept options">
+      {[0, 1, 2].map((i) => (
+        <AppCard key={i} className="concept-option-skeleton">
+          <div className="flex items-center gap-3 mb-3">
+            <Skeleton variant="circular" width={36} height={36} />
+            <div className="flex-1 space-y-2">
+              <Skeleton variant="text" height={14} width="70%" />
+              <Skeleton variant="text" height={10} width="40%" />
+            </div>
+          </div>
+          <Skeleton variant="text" height={12} className="mb-2" />
+          <Skeleton variant="text" height={12} width="90%" className="mb-2" />
+          <Skeleton variant="rectangular" height={40} />
+        </AppCard>
+      ))}
+    </div>
+  );
+}
+
 const CHARACTER_ROLES = ['protagonist', 'antagonist', 'supporting', 'minor'];
 
 function StepIndicator({ step, current }) {
-  const STEPS = ['Film Concept', 'Characters', 'Generate', 'Review'];
+  const STEPS = ['Film Concept', 'Approve Cast', 'Generate', 'Review'];
   const progressPct = ((current - 1) / (STEPS.length - 1)) * 100;
   return (
     <>
@@ -636,6 +709,12 @@ export default function FilmStudioPage() {
   const [isDraggingMedia, setIsDraggingMedia] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
   const [researchNotes, setResearchNotes] = useState('');
+  // Description-mode concept enticement (A/B/C)
+  const [conceptOptions, setConceptOptions] = useState([]);
+  const [selectedConceptId, setSelectedConceptId] = useState('');
+  const [lookBible, setLookBible] = useState('');
+  const [isLoadingConcepts, setIsLoadingConcepts] = useState(false);
+  const [looksApprovedIds, setLooksApprovedIds] = useState(() => new Set());
   const [fundsOpen, setFundsOpen] = useState(false);
   const [fundsDetail, setFundsDetail] = useState(null);
   const [estimate, setEstimate] = useState(null);
@@ -737,6 +816,11 @@ export default function FilmStudioPage() {
               additionalSettings: '',
               mediaFile: null,
             });
+            setConceptOptions([]);
+            setSelectedConceptId('');
+            setLookBible('');
+            setLooksApprovedIds(new Set());
+            setResearchNotes('');
           }
         } else {
           // Load the screenplay we were last working on. Prefer the exact id we
@@ -877,7 +961,12 @@ export default function FilmStudioPage() {
   }, [step, concept.duration, generatedScreenplay?.totalScenes, generatedScreenplay?.targetDurationMinutes, characters.length]);
 
   // ── Step 1: Film Concept ────────────────────────────────────────────────────
+  const isScriptUpload = looksLikeUploadedScript(concept.synopsis);
   const step1Valid = concept.title.trim().length > 0 && concept.synopsis.trim().length > 20;
+  const selectedConcept = conceptOptions.find((o) => o.id === selectedConceptId) || null;
+  const canProceedFromConcept = step1Valid && (
+    isScriptUpload || !conceptOptions.length || !!selectedConceptId
+  );
 
   // ── Step 2: Characters ─────────────────────────────────────────────────────
   const handleSaveCharacter = async (form, imageFile) => {
@@ -1004,14 +1093,52 @@ export default function FilmStudioPage() {
     return currentProjId || null;
   };
 
-  // ── Step 1 to Step 2: Proceed to Characters with auto-database save ─────────
+  // ── Step 1 to Step 2: Concept pick → Approve Cast ───────────────────────────
   const handleProceedToCharacters = async () => {
     if (!step1Valid) return;
     setLoading(true);
+    setError('');
     try {
+      // Description mode: ensure A/B/C options exist and one is selected.
+      if (!isScriptUpload) {
+        let options = conceptOptions;
+        if (!options.length && !isLoadingConcepts) {
+          options = (await fetchConceptOptions(concept)) || [];
+        }
+        if (options.length && !selectedConceptId) {
+          setError('Pick a concept card (A, B, or C) to continue.');
+          setLoading(false);
+          return;
+        }
+        const picked = options.find((o) => o.id === selectedConceptId);
+        if (picked) applySelectedConcept(picked);
+      }
+
       const projId = await syncProjectToDatabase();
-      // Ensure any characters in state are saved to database with this projId
-      if (projId && characters.length > 0) {
+
+      // Seed cast from selected concept when the project has no characters yet.
+      const picked = conceptOptions.find((o) => o.id === selectedConceptId);
+      const suggested = picked?.suggestedCharacters || [];
+      if (projId && characters.length === 0 && suggested.length > 0) {
+        try {
+          const createdChars = await Promise.all(
+            suggested.map(async (sc) => {
+              const { data } = await filmCharactersApi.create({
+                name: sc.name,
+                role: sc.role || 'supporting',
+                physicalDescription: sc.physicalDescription || '',
+                backstory: sc.backstory || '',
+                projectId: projId,
+              });
+              return data.character;
+            })
+          );
+          setCharacters(createdChars);
+          setLooksApprovedIds(new Set());
+        } catch (err) {
+          console.error('Failed to seed suggested cast:', err);
+        }
+      } else if (projId && characters.length > 0) {
         const persistedChars = await Promise.all(
           characters.map(async (char) => {
             if (char._id && !String(char._id).startsWith('temp-') && String(char._id).length === 24) {
@@ -1033,6 +1160,7 @@ export default function FilmStudioPage() {
         );
         setCharacters(persistedChars);
       }
+
       setStep(2);
       localStorage.setItem('film_studio_step', '2');
     } catch (err) {
@@ -1040,6 +1168,36 @@ export default function FilmStudioPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const patchCharacterLocal = (charId, fields) => {
+    setCharacters((cs) => cs.map((c) => (c._id === charId ? { ...c, ...fields } : c)));
+  };
+
+  const persistCharacterFields = async (charId, fields) => {
+    const isPersisted = charId && !String(charId).startsWith('temp-') && String(charId).length === 24;
+    if (!isPersisted) return;
+    try {
+      const { data } = await filmCharactersApi.update(charId, fields);
+      if (data?.character) {
+        setCharacters((cs) => cs.map((c) => (c._id === charId ? data.character : c)));
+      }
+    } catch (err) {
+      console.error('Failed to update character look:', err);
+    }
+  };
+
+  const toggleLookApproved = (charId) => {
+    setLooksApprovedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(charId)) next.delete(charId);
+      else next.add(charId);
+      return next;
+    });
+  };
+
+  const approveAllLooks = () => {
+    setLooksApprovedIds(new Set(characters.map((c) => c._id).filter(Boolean)));
   };
 
   // ── Start a completely new studio film ────────────────────────────────────
@@ -1053,42 +1211,91 @@ export default function FilmStudioPage() {
     setGeneratedScreenplay(null);
     setCharacters([]);
     setConcept(DEFAULT_CONCEPT);
+    setConceptOptions([]);
+    setSelectedConceptId('');
+    setLookBible('');
+    setLooksApprovedIds(new Set());
+    setResearchNotes('');
     setStep(1);
     navigate('/app/film-studio?new=true', { replace: true });
   };
 
-  // ── AI Research & Trend Expansion ──────────────────────────────────────────
+  // ── Fetch A/B/C concept options (description mode) ─────────────────────────
+  const fetchConceptOptions = async (overrideConcept) => {
+    const c = overrideConcept || concept;
+    if (!c.synopsis?.trim() || looksLikeUploadedScript(c.synopsis)) {
+      setConceptOptions([]);
+      setSelectedConceptId('');
+      setLookBible('');
+      return null;
+    }
+    setIsLoadingConcepts(true);
+    setError('');
+    try {
+      const { data } = await screenplaysApi.conceptOptions({
+        title: c.title,
+        synopsis: c.synopsis,
+        videoType: c.videoType,
+      });
+      const options = Array.isArray(data?.options) ? data.options : [];
+      setConceptOptions(options);
+      // Keep prior selection if still present; otherwise clear so user re-picks.
+      setSelectedConceptId((prev) => (options.some((o) => o.id === prev) ? prev : ''));
+      if (!options.some((o) => o.id === selectedConceptId)) setLookBible('');
+      return options;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to load concept options. Please try again.');
+      setConceptOptions([]);
+      return null;
+    } finally {
+      setIsLoadingConcepts(false);
+    }
+  };
+
+  const applySelectedConcept = (option) => {
+    if (!option) return;
+    setSelectedConceptId(option.id);
+    setLookBible(option.lookBible || option.lookSummary || '');
+    setConcept((prev) => ({
+      ...prev,
+      title: (!prev.title || prev.title.trim().length < 3 || prev.title === 'Untitled')
+        ? (option.title || prev.title)
+        : prev.title,
+      synopsis: option.expandedSynopsis || prev.synopsis,
+      themes: Array.isArray(option.motifs) && option.motifs.length
+        ? option.motifs.join(', ')
+        : prev.themes,
+    }));
+  };
+
+  // ── AI Research & Trend Expansion (+ concept cards) ────────────────────────
   const handleAiResearchExpand = async () => {
     if (!concept.synopsis.trim()) return;
     setIsExpanding(true);
     setError('');
     try {
       const selectedType = VIDEO_TYPES.find(t => t.id === concept.videoType)?.label || concept.videoType;
-      const { data } = await screenplaysApi.researchExpand({
-        title: concept.title,
-        synopsis: concept.synopsis,
-        videoType: concept.videoType,
-      });
 
-      if (data?.expandedSynopsis) {
-        const updatedConcept = {
-          ...concept,
-          title: (!concept.title || concept.title.trim().length < 3 || concept.title === 'Untitled') ? (data.suggestedTitle || concept.title) : concept.title,
-          synopsis: data.expandedSynopsis,
-          themes: data.themes?.length ? data.themes.join(', ') : concept.themes,
-        };
-        setConcept(updatedConcept);
-
-        // Automatically save this newly researched project to MongoDB immediately
-        const projId = await syncProjectToDatabase(updatedConcept);
-
-        if (data.researchHighlights || data.videoTypeDirectives) {
-          setResearchNotes(`${data.researchHighlights ? data.researchHighlights + ' ' : ''}Tailored specifically as a ${selectedType} script.`);
-        }
-
-        // Save suggested characters directly to MongoDB linked to this project
-        if (data.suggestedCharacters?.length && (!characters || characters.length === 0)) {
-          if (projId) {
+      // Script-upload path: classic research-expand only (no A/B/C cards).
+      if (looksLikeUploadedScript(concept.synopsis)) {
+        const { data } = await screenplaysApi.researchExpand({
+          title: concept.title,
+          synopsis: concept.synopsis,
+          videoType: concept.videoType,
+        });
+        if (data?.expandedSynopsis) {
+          const updatedConcept = {
+            ...concept,
+            title: (!concept.title || concept.title.trim().length < 3 || concept.title === 'Untitled') ? (data.suggestedTitle || concept.title) : concept.title,
+            synopsis: data.expandedSynopsis,
+            themes: data.themes?.length ? data.themes.join(', ') : concept.themes,
+          };
+          setConcept(updatedConcept);
+          const projId = await syncProjectToDatabase(updatedConcept);
+          if (data.researchHighlights || data.videoTypeDirectives) {
+            setResearchNotes(`${data.researchHighlights ? data.researchHighlights + ' ' : ''}Tailored specifically as a ${selectedType} script.`);
+          }
+          if (data.suggestedCharacters?.length && (!characters || characters.length === 0) && projId) {
             try {
               const createdChars = await Promise.all(
                 data.suggestedCharacters.map(async (sc) => {
@@ -1108,6 +1315,17 @@ export default function FilmStudioPage() {
             }
           }
         }
+        setConceptOptions([]);
+        setSelectedConceptId('');
+        setLookBible('');
+        return;
+      }
+
+      // Description mode: fetch 3 concept cards (enticement).
+      const options = await fetchConceptOptions(concept);
+      if (options?.length) {
+        setResearchNotes(`Pick a concept tone/look (${options.length} options) tailored for ${selectedType}.`);
+        await syncProjectToDatabase(concept);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to research and expand concept. Please try again.');
@@ -1126,16 +1344,21 @@ export default function FilmStudioPage() {
       const isSameProject = activeProject && activeProject.name?.trim().toLowerCase() === concept.title.trim().toLowerCase();
       const currentProjId = isSameProject ? (projectId || activeProject._id) : null;
 
+      const picked = conceptOptions.find((o) => o.id === selectedConceptId);
+      const toneFromConcept = picked?.tone || 'cinematic';
       const { data } = await screenplaysApi.generate({
         title: concept.title,
         genre: concept.videoType, // Map VideoType to genre for backend compatibility
         synopsis: concept.synopsis,
-        tone: 'cinematic', // default tone
+        tone: toneFromConcept,
         themes: concept.themes ? concept.themes.split(',').map(t => t.trim()).filter(Boolean) : [],
         animationStyle: 'cinematic', // fallback for previous required field
         aspectRatio: concept.aspectRatio,
         targetDurationMinutes: concept.duration,
         additionalSettings: concept.additionalSettings,
+        selectedConceptId: selectedConceptId || undefined,
+        lookBible: lookBible || picked?.lookBible || undefined,
+        motifs: Array.isArray(picked?.motifs) ? picked.motifs : undefined,
         filmCharacterIds: characters.map(c => c._id).filter(id => id && !String(id).startsWith('temp-') && String(id).length === 24),
         projectId: currentProjId || null,
       });
@@ -1342,17 +1565,17 @@ export default function FilmStudioPage() {
                       disabled={isExpanding || !concept.synopsis.trim()}
                       onClick={handleAiResearchExpand}
                       className="film-ai-expand-btn"
-                      title="AI will research the internet and create a trending script matching your Video Type"
+                      title="Expand your idea into 3 concept tones/looks (A/B/C), or research a pasted script"
                     >
-                      {isExpanding ? (
+                      {isExpanding || isLoadingConcepts ? (
                         <>
                           <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin shrink-0" />
-                          <span>Researching…</span>
+                          <span>{isScriptUpload ? 'Researching…' : 'Expanding ideas…'}</span>
                         </>
                       ) : (
                         <>
                           <Sparkles size={13} className="text-amber-300" />
-                          <span>AI Research & Expand</span>
+                          <span>{isScriptUpload ? 'AI Research & Expand' : 'Expand ideas'}</span>
                         </>
                       )}
                     </button>
@@ -1370,9 +1593,46 @@ export default function FilmStudioPage() {
                     <div className="mt-2 p-2.5 rounded-lg bg-[var(--brand-subtle)] border border-[color-mix(in_srgb,var(--brand-primary)_30%,transparent)] text-xs text-[var(--text-secondary)] flex items-start gap-2 animate-fadeIn">
                       <Sparkles size={14} className="text-[var(--brand-light)] shrink-0 mt-0.5" />
                       <div>
-                        <span className="font-semibold text-[var(--text-primary)]">Researched & Trending: </span>
+                        <span className="font-semibold text-[var(--text-primary)]">
+                          {isScriptUpload ? 'Researched & Trending: ' : 'Concept ideas: '}
+                        </span>
                         <span>{researchNotes}</span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Description-mode A/B/C concept cards */}
+                  {!isScriptUpload && (isLoadingConcepts || conceptOptions.length > 0) && (
+                    <div className="concept-options-section mt-4">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <label className="form-label m-0">Choose a concept (A / B / C)</label>
+                        {selectedConceptId && (
+                          <span className="text-[11px] text-[var(--accent-green)] font-semibold flex items-center gap-1">
+                            <CheckCircle size={12} /> Selected {selectedConceptId}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mb-3">
+                        Each card is a different tone and visual look. Pick one before continuing.
+                      </p>
+                      {isLoadingConcepts ? (
+                        <ConceptOptionsSkeleton />
+                      ) : (
+                        <div className="concept-options-grid">
+                          {conceptOptions.map((opt, idx) => {
+                            const letter = String(opt.id || ['A', 'B', 'C'][idx] || '?').slice(0, 1).toUpperCase();
+                            return (
+                              <ConceptOptionCard
+                                key={opt.id || letter}
+                                option={opt}
+                                letter={letter}
+                                selected={selectedConceptId === opt.id}
+                                onSelect={applySelectedConcept}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1497,40 +1757,134 @@ export default function FilmStudioPage() {
 
             <div className="step-footer step-footer--sticky">
               <div className="step-info">
-                <span><strong>{VIDEO_TYPES.find(t => t.id === concept.videoType)?.label}</strong> · {concept.aspectRatio}</span>
+                <span>
+                  <strong>{VIDEO_TYPES.find(t => t.id === concept.videoType)?.label}</strong> · {concept.aspectRatio}
+                  {selectedConceptId ? ` · Concept ${selectedConceptId}` : ''}
+                </span>
               </div>
               <button
                 type="button"
                 className="btn btn-primary btn-lg"
-                disabled={!step1Valid || loading}
+                disabled={!canProceedFromConcept || loading || isLoadingConcepts || isExpanding}
                 onClick={handleProceedToCharacters}
               >
-                {loading ? 'Saving…' : 'Next: Add Characters →'}
+                {loading || isLoadingConcepts
+                  ? (isLoadingConcepts ? 'Loading concepts…' : 'Saving…')
+                  : 'Next: Approve Cast →'}
               </button>
             </div>
           </div>
         )}
 
-        {/* ── STEP 2: Characters ── */}
+        {/* ── STEP 2: Approve Cast Looks ── */}
         {step === 2 && (
           <div className="film-step-panel">
             <div className="step-panel-header">
-              <h2 className="flex items-center gap-2"><Users size={20} className="text-[var(--text-muted)]"/> Character Builder</h2>
-              <p>Add your main characters. The more detail you give, the more consistent they'll look across all scenes.</p>
+              <h2 className="flex items-center gap-2"><Users size={20} className="text-[var(--text-muted)]"/> Approve Cast Looks</h2>
+              <p>
+                Review auto-suggested cast and physical looks. Approve or edit name + description before generate.
+                {selectedConceptId ? ` (from concept ${selectedConceptId})` : ''}
+              </p>
             </div>
 
-            <div className="characters-grid">
-              {characters.map((char, i) => (
-                <CharacterCard
-                  key={char._id}
-                  char={char}
-                  index={i}
-                  onEdit={(c) => { setEditingChar(c); setShowCharEditor(true); }}
-                  onDelete={handleDeleteCharacter}
-                  onPreview={setPreviewImage}
-                />
-              ))}
+            {characters.length > 0 && (
+              <div className="cast-approve-toolbar">
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={CheckCircle}
+                  onClick={approveAllLooks}
+                >
+                  Approve all looks
+                </AppButton>
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  {looksApprovedIds.size}/{characters.length} approved
+                </span>
+              </div>
+            )}
 
+            <div className="cast-approve-list">
+              {characters.map((char, i) => {
+                const approved = looksApprovedIds.has(char._id);
+                return (
+                  <AppCard key={char._id || i} className={`cast-approve-card ${approved ? 'approved' : ''}`}>
+                    <div className="cast-approve-card-head">
+                      <div className="cast-approve-avatar" style={{ background: `hsl(${i * 60}, 70%, 25%)` }}>
+                        {char.name ? char.name[0].toUpperCase() : '?'}
+                      </div>
+                      <div className="cast-approve-fields flex-1">
+                        <label className="form-label">Name</label>
+                        <input
+                          className="form-input"
+                          value={char.name || ''}
+                          onChange={(e) => patchCharacterLocal(char._id, { name: e.target.value })}
+                          onBlur={(e) => persistCharacterFields(char._id, { name: e.target.value })}
+                          placeholder="Character name"
+                        />
+                      </div>
+                      <div className="cast-approve-role">
+                        <label className="form-label">Role</label>
+                        <select
+                          className="form-input"
+                          value={char.role || 'supporting'}
+                          onChange={(e) => {
+                            patchCharacterLocal(char._id, { role: e.target.value });
+                            persistCharacterFields(char._id, { role: e.target.value });
+                          }}
+                        >
+                          {CHARACTER_ROLES.map((r) => (
+                            <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="cast-approve-fields mt-3">
+                      <label className="form-label">Physical description (look)</label>
+                      <textarea
+                        className="form-textarea"
+                        rows={3}
+                        value={char.physicalDescription || ''}
+                        onChange={(e) => patchCharacterLocal(char._id, { physicalDescription: e.target.value })}
+                        onBlur={(e) => persistCharacterFields(char._id, { physicalDescription: e.target.value })}
+                        placeholder="Hair, face, wardrobe, age cues — used for visual consistency"
+                      />
+                    </div>
+                    <div className="cast-approve-actions">
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${approved ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => toggleLookApproved(char._id)}
+                      >
+                        {approved ? (
+                          <><CheckCircle size={14} className="inline mr-1" /> Look approved</>
+                        ) : (
+                          <>Approve look</>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        title="Full editor"
+                        onClick={() => { setEditingChar(char); setShowCharEditor(true); }}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-icon btn-icon-danger"
+                        title="Remove"
+                        onClick={() => handleDeleteCharacter(char)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </AppCard>
+                );
+              })}
+            </div>
+
+            <div className="characters-grid mt-3">
               <button
                 className="add-char-btn"
                 onClick={() => { setEditingChar(null); setShowCharEditor(true); }}
@@ -1543,14 +1897,14 @@ export default function FilmStudioPage() {
             {characters.length === 0 && (
               <div className="chars-empty-hint">
                 <div className="chars-empty-icon"><Lightbulb size={24} style={{ color: "var(--accent-gold)" }} /></div>
-                <p>You can skip characters and let the AI create them, or add your own for better visual consistency.</p>
+                <p>No cast yet — skip and let the AI invent characters, or add your own looks now.</p>
               </div>
             )}
 
             <div className="step-footer step-footer--sticky">
               <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>← Back</button>
               <button type="button" className="btn btn-primary btn-lg" onClick={() => setStep(3)}>
-                Next: Generate Screenplay →
+                {characters.length === 0 ? 'Skip cast →' : 'Next: Generate Screenplay →'}
               </button>
             </div>
           </div>
@@ -1585,6 +1939,13 @@ export default function FilmStudioPage() {
                 <div className="summary-label">Characters</div>
                 <div className="summary-value">{characters.length > 0 ? characters.map(c => c.name).join(', ') : 'AI-Generated'}</div>
               </div>
+              {selectedConcept && (
+                <div className="summary-card">
+                  <div className="summary-icon"><Sparkles size={16}/></div>
+                  <div className="summary-label">Concept {selectedConcept.id}</div>
+                  <div className="summary-value">{selectedConcept.tone}</div>
+                </div>
+              )}
             </div>
 
             <div className="synopsis-preview">

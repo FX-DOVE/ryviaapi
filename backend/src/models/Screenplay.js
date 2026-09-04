@@ -22,6 +22,12 @@ const actSchema = new mongoose.Schema({
   sceneEnd:    { type: Number, required: true },
   emotion:     { type: String, default: 'neutral' }, // dominant act mood
   musicStyle:  { type: String, default: 'orchestral' },
+  // Dialogue / narrative watchability scores (persisted from validateActCoherence)
+  narrativeCoherence: { type: Number, min: 1, max: 10, default: null },
+  dialogueQuality:    { type: Number, min: 1, max: 10, default: null },
+  plotProgression:    { type: Number, min: 1, max: 10, default: null },
+  coherenceIssues:    [{ type: String }],
+  rewriteAttempted:   { type: Boolean, default: false },
 }, { _id: false });
 
 const screenplaySceneSchema = new mongoose.Schema({
@@ -53,6 +59,42 @@ const screenplaySceneSchema = new mongoose.Schema({
   intensity:     { type: Number, min: 1, max: 10, default: 5 },
 
   duration:      { type: Number, default: 10 },     // target duration in seconds
+
+  // Beauty pass / motif enrichment (description→film pack)
+  enrichedVisual: { type: String, default: '' },   // upgraded visual language for keyframes
+  beautyNotes:    { type: String, default: '' },   // practical lights, wardrobe texture, DoF, etc.
+  motifRefs:      [{ type: String }],              // which visual motifs this scene references
+  isColdOpen:     { type: Boolean, default: false },
+}, { _id: false });
+
+const coldOpenBeatSchema = new mongoose.Schema({
+  action:       { type: String, default: '' },
+  location:     { type: String, default: '' },
+  cameraType:   { type: String, default: 'close_up' },
+  emotion:      { type: String, default: 'tense' },
+  visualPrompt: { type: String, default: '' },
+}, { _id: false });
+
+const coldOpenSchema = new mongoose.Schema({
+  hookLine:     { type: String, default: '' },
+  coldOpenBeat: { type: coldOpenBeatSchema, default: () => ({}) },
+  hookVisual:   { type: String, default: '' },
+}, { _id: false });
+
+const lookBibleSchema = new mongoose.Schema({
+  colorGrade:           { type: String, default: '' },
+  lensLanguage:         { type: String, default: '' },
+  lightingRecipe:       { type: String, default: '' },
+  filmStock:            { type: String, default: '' }, // film stock / grain
+  animationStyleNotes:  { type: String, default: '' },
+}, { _id: false });
+
+const audioSpineCueSchema = new mongoose.Schema({
+  atScene:   { type: Number, required: true },
+  type:      { type: String, enum: ['music', 'silence', 'sfx'], default: 'music' },
+  cue:       { type: String, default: '' },
+  mood:      { type: String, default: '' },
+  intensity: { type: Number, min: 1, max: 10, default: 5 },
 }, { _id: false });
 
 const screenplaySchema = new mongoose.Schema(
@@ -75,12 +117,26 @@ const screenplaySchema = new mongoose.Schema(
     tone:        { type: String, default: 'dramatic' },  // "dark and gritty", "fun and light"
     themes:      [{ type: String }],                     // ["redemption", "love", "power"]
     additionalSettings: { type: String, default: '' },   // Custom director instructions
+    selectedConceptId: { type: String, default: '' }, // A/B/C from concept-options enticement
 
     // Story structure
     storyBible:  { type: String, default: '' },   // AI-written world/character overview
     characters:  [characterProfileSchema],
     acts:        [actSchema],
     scenes:      [screenplaySceneSchema],
+
+    // Description → beautiful film pack
+    coldOpen:    { type: coldOpenSchema, default: null },
+    lookBible:   { type: lookBibleSchema, default: () => ({}) },
+    motifs:      [{ type: String }],
+    audioSpine:  [audioSpineCueSchema],
+
+    // Aggregate quality scores (latest act pass averages)
+    qualityScores: {
+      narrativeCoherence: { type: Number, default: null },
+      dialogueQuality:    { type: Number, default: null },
+      plotProgression:    { type: Number, default: null },
+    },
 
     // Generation metadata
     totalScenes:   { type: Number, default: 0 },
