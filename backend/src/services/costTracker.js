@@ -155,7 +155,7 @@ export async function recordFallbackCall(kind, label) {
 }
 
 /**
- * Sum infrastructure, apply hidden markup, deduct billed amount from wallet.
+ * Sum infrastructure, apply hidden markup + billing multiplier, deduct billed amount from wallet.
  * Idempotent via JobCost.settled.
  */
 export async function settleJobBilling(jobId) {

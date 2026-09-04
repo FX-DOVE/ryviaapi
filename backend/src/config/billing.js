@@ -2,17 +2,21 @@
  * Internal billing constants.
  *
  * Wallet is stored as USD cents on Workspace.credits.
- * Top-up: user is charged 2× the credit they receive (50% of payment is studio balance).
- * Jobs: billed amount = infrastructure cost × (1 + MARKUP_RATE). Markup is never sent to the UI.
+ * Top-up: deposit is credited 1:1 (pay $100 → $100 studio balance).
+ * Jobs: billed = (infra × (1 + MARKUP_RATE)) × BILLING_MULTIPLIER.
+ * Markup and multiplier are never exposed in public cost APIs or UI copy.
  */
 
 export const USD_CENTS = 100;
 
-/** Fraction of a Paystack payment that is credited to the workspace. */
-export const TOPUP_CREDIT_RATIO = 0.5;
+/** Fraction of a Paystack payment credited to the workspace (1.0 = full amount). */
+export const TOPUP_CREDIT_RATIO = 1;
 
 /** Hidden production markup applied to infrastructure cost after the job finishes. */
 export const JOB_MARKUP_RATE = 0.25;
+
+/** Hidden post-markup multiplier applied to the user deduction (never shown in UI). */
+export const JOB_BILLING_MULTIPLIER = 2;
 
 export const MIN_CREDIT_USD = 5;
 export const MAX_CREDIT_USD = 5000;
@@ -68,10 +72,14 @@ export function estimateProductionInfraUsd({
 
 export function applyMarkup(infraUsd) {
   const infra = Math.max(0, Number(infraUsd) || 0);
-  const billed = infra * (1 + JOB_MARKUP_RATE);
+  const afterMarkup = infra * (1 + JOB_MARKUP_RATE);
+  const markupUsd = afterMarkup - infra;
+  const billed = afterMarkup * JOB_BILLING_MULTIPLIER;
   return {
     infraUsd: roundUsd(infra),
-    markupUsd: roundUsd(billed - infra),
+    markupUsd: roundUsd(markupUsd),
+    // Internal only — sum of markup dollars + multiplier uplift vs infra
+    multiplierUsd: roundUsd(billed - afterMarkup),
     billedUsd: roundUsd(billed),
   };
 }
@@ -152,6 +160,7 @@ export class InsufficientFundsError extends Error {
 export default {
   TOPUP_CREDIT_RATIO,
   JOB_MARKUP_RATE,
+  JOB_BILLING_MULTIPLIER,
   CREDIT_PACKAGES,
   estimateBilledUsd,
   applyMarkup,
