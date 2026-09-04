@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
-  register, login, refreshToken, logout, getMe,
+  register, registerVerify, registerResend,
+  login, refreshToken, logout, getMe,
   forgotPassword, resetPassword,
 } from '../controllers/authController.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -9,6 +10,8 @@ const router = Router();
 
 router.get('/me',       authMiddleware, getMe);
 router.post('/register', register);
+router.post('/register/verify', registerVerify);
+router.post('/register/resend', registerResend);
 router.post('/login',    login);
 router.post('/refresh',  refreshToken);
 router.post('/logout',   authMiddleware, logout);

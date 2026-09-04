@@ -37,11 +37,9 @@ export default function Register() {
         throw new Error(data.error || 'Registration failed');
       }
 
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      navigate('/app');
+      // Do not log in yet — verify email first
+      const targetEmail = data.email || email;
+      navigate(`/verify-email?email=${encodeURIComponent(targetEmail)}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -82,6 +80,7 @@ export default function Register() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          minLength={6}
           placeholder="••••••••"
         />
 
@@ -94,9 +93,9 @@ export default function Register() {
             {loading ? (
               <>
                 <div className="spinner w-5 h-5 border-white border-t-transparent mr-2"></div>
-                Creating Account...
+                Sending code…
               </>
-            ) : 'Start Creating'}
+            ) : 'Continue'}
           </AppButton>
         </div>
       </form>

@@ -17,9 +17,9 @@ const userSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Pre-save hook to hash password
+// Pre-save hook to hash password (skip when already hashed, e.g. from PendingSignup)
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || this._passwordAlreadyHashed) return next();
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -35,4 +35,3 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 export default mongoose.model('User', userSchema);
-

@@ -478,6 +478,7 @@ For long-form drama, movie, and anime jobs on a VPS:
 - **Job billing** — completed jobs bill `(infra × 1.25) × 2` (`JOB_MARKUP_RATE=0.25`, `JOB_BILLING_MULTIPLIER=2`). Markup and multiplier are never exposed in public cost APIs or wallet UI.
 - **Coupons** — admins create codes under `/api/system/coupons`; users redeem via `POST /api/billing/coupons/redeem`.
 - **Email** — set `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASS` / `EMAIL_FROM` / `APP_URL` in `.env`. When `EMAIL_HOST` is unset, mail is skipped safely (welcome, password reset, video ready, admin bulk).
+- **Signup email OTP** — registration does not create a user until the email OTP is verified (`POST /api/auth/register` → code email → `POST /api/auth/register/verify`). Requires `EMAIL_*` configured in production so codes are delivered; without `EMAIL_HOST` in non-production, responses may include `devCode` for local testing.
 
 
 ### 5. Nginx Web Server Configuration
