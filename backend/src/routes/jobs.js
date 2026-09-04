@@ -6,7 +6,8 @@ import {
   streamVideo, streamThumbnail, deleteJob,
   streamSceneImage, streamSceneVideo,
   streamCharacterLockImage, streamEnvironmentLockImage,
-  stopJob, resumeJob, retryJob, retryScene
+  stopJob, resumeJob, retryJob, retryScene,
+  regenerateCharacterLock, regenerateEnvironmentLock,
 } from '../controllers/jobController.js';
 import editorRoutes from './editor.js';
 
@@ -32,7 +33,9 @@ router.post('/:id/retry',    retryJob);
 
 // Consistency lock assets
 router.get('/:id/characters/:characterName/image', streamCharacterLockImage);
+router.post('/:id/characters/:characterName/regenerate', regenerateCharacterLock);
 router.get('/:id/environments/:locationId/image',  streamEnvironmentLockImage);
+router.post('/:id/environments/:locationId/regenerate', regenerateEnvironmentLock);
 
 // Per-scene media streaming
 router.get('/:id/scenes/:sceneId/image', streamSceneImage);

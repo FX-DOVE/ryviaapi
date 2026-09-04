@@ -11,7 +11,8 @@ import useAppStore from '../store/useAppStore';
 import {
   getJobDetail, getJobLogs, getJobScenes, deleteJob, stopJob, resumeJob,
   retryJob, retryScene, getVideoStreamUrl, getSceneImageUrl, getSceneVideoUrl,
-  getCharacterLockImageUrl, getEnvironmentLockImageUrl
+  getCharacterLockImageUrl, getEnvironmentLockImageUrl,
+  regenerateCharacterLock, regenerateEnvironmentLock,
 } from '../api/jobs';
 import { useJobSocket } from '../hooks/useSocket';
 import StatusBadge from '../components/StatusBadge';
@@ -135,10 +136,12 @@ function ImageLightboxModal({ preview, onClose }) {
 }
 
 // Visual Character Avatar Card Component with click-to-preview
-function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription }) {
+function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription, hasLockImage = false, cacheKey = '' }) {
   const [imgError, setImgError] = useState(false);
   const initials = (name || 'C').slice(0, 2).toUpperCase();
-  const imageUrl = getCharacterLockImageUrl(jobId, name);
+  const baseUrl = getCharacterLockImageUrl(jobId, name);
+  const imageUrl = cacheKey ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheKey)}` : baseUrl;
+  const showImage = hasLockImage && !imgError;
 
   const colorPalettes = [
     'from-purple-900/60 to-indigo-900/60 border-purple-500/30 text-purple-200',
@@ -150,7 +153,7 @@ function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription }) 
   const palette = colorPalettes[charCode % colorPalettes.length];
 
   const handleClick = () => {
-    if (!imgError && onPreview) {
+    if (showImage && onPreview) {
       onPreview({
         title: `${name} — Master Character Lock`,
         badge: role ? `${role.toUpperCase()} • MASTER LOCK` : 'CHARACTER LOCK',
@@ -165,12 +168,13 @@ function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription }) 
   return (
     <div
       onClick={handleClick}
-      className={`w-16 h-16 rounded-[var(--radius-md)] overflow-hidden bg-gradient-to-br ${palette} border shrink-0 flex flex-col items-center justify-center relative shadow-inner transition-transform duration-300 ${!imgError ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-purple-500/50 group/avatar' : ''}`}
-      title={!imgError ? `Click to view full reference lock image for ${name}` : name}
+      className={`w-24 h-28 sm:w-28 sm:h-32 rounded-[var(--radius-md)] overflow-hidden bg-gradient-to-br ${palette} border shrink-0 flex flex-col items-center justify-center relative shadow-inner transition-transform duration-300 ${showImage ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-purple-500/50 group/avatar' : ''}`}
+      title={showImage ? `Click to view full reference lock image for ${name}` : name}
     >
-      {!imgError ? (
+      {showImage ? (
         <>
           <img
+            key={imageUrl}
             src={imageUrl}
             alt={name}
             className="w-full h-full object-cover"
@@ -184,8 +188,8 @@ function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription }) 
           </div>
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center">
-          <span className="font-bold text-base tracking-wider">{initials}</span>
+        <div className="flex flex-col items-center justify-center px-2 text-center">
+          <span className="font-bold text-lg tracking-wider">{initials}</span>
           <span className="text-[8px] uppercase tracking-widest opacity-70 mt-0.5">{role?.slice(0, 4) || 'CAST'}</span>
         </div>
       )}
@@ -194,12 +198,14 @@ function CharacterAvatar({ jobId, name, role, onPreview, physicalDescription }) 
 }
 
 // Visual Environment Plate Card with click-to-preview
-function EnvironmentPlate({ jobId, locationId, name, onPreview, description }) {
+function EnvironmentPlate({ jobId, locationId, name, onPreview, description, hasLockImage = false, cacheKey = '' }) {
   const [imgError, setImgError] = useState(false);
-  const imageUrl = getEnvironmentLockImageUrl(jobId, locationId);
+  const baseUrl = getEnvironmentLockImageUrl(jobId, locationId);
+  const imageUrl = cacheKey ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheKey)}` : baseUrl;
+  const showImage = hasLockImage && !imgError;
 
   const handleClick = () => {
-    if (!imgError && onPreview) {
+    if (showImage && onPreview) {
       onPreview({
         title: `${name || locationId} — Environment Reference Plate`,
         badge: 'MASTER LOCATION SET',
@@ -214,12 +220,13 @@ function EnvironmentPlate({ jobId, locationId, name, onPreview, description }) {
   return (
     <div
       onClick={handleClick}
-      className={`w-16 h-16 rounded-[var(--radius-md)] overflow-hidden bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/20 shrink-0 flex flex-col items-center justify-center relative shadow-inner transition-transform duration-300 ${!imgError ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-blue-500/50 group/plate' : ''}`}
-      title={!imgError ? `Click to view full reference plate for ${name || locationId}` : (name || locationId)}
+      className={`w-24 h-20 sm:w-28 sm:h-24 rounded-[var(--radius-md)] overflow-hidden bg-gradient-to-br from-blue-950/60 to-slate-900/60 border border-blue-500/20 shrink-0 flex flex-col items-center justify-center relative shadow-inner transition-transform duration-300 ${showImage ? 'cursor-pointer hover:scale-105 hover:ring-2 hover:ring-blue-500/50 group/plate' : ''}`}
+      title={showImage ? `Click to view full reference plate for ${name || locationId}` : (name || locationId)}
     >
-      {!imgError ? (
+      {showImage ? (
         <>
           <img
+            key={imageUrl}
             src={imageUrl}
             alt={name}
             className="w-full h-full object-cover"
@@ -272,6 +279,42 @@ export default function JobDetail() {
 
   // Full-size image preview lightbox modal
   const [previewImage, setPreviewImage] = useState(null);
+  const [regeneratingKey, setRegeneratingKey] = useState(null);
+  const [activeReference, setActiveReference] = useState(null);
+
+  const refreshJobDetail = async () => {
+    const detail = await getJobDetail(id);
+    setActiveJob(detail.data);
+    return detail.data;
+  };
+
+  const handleRegenerateCharacter = async (charName) => {
+    const key = `char:${charName}`;
+    setRegeneratingKey(key);
+    try {
+      await regenerateCharacterLock(id, charName);
+      await refreshJobDetail();
+      addToast(`Regenerated lock for ${charName}`, 'success');
+    } catch (err) {
+      addToast(err.response?.data?.error || `Failed to regenerate ${charName}`, 'error');
+    } finally {
+      setRegeneratingKey(null);
+    }
+  };
+
+  const handleRegenerateEnvironment = async (locationId) => {
+    const key = `env:${locationId}`;
+    setRegeneratingKey(key);
+    try {
+      await regenerateEnvironmentLock(id, locationId);
+      await refreshJobDetail();
+      addToast(`Regenerated plate for ${locationId}`, 'success');
+    } catch (err) {
+      addToast(err.response?.data?.error || `Failed to regenerate ${locationId}`, 'error');
+    } finally {
+      setRegeneratingKey(null);
+    }
+  };
 
   const toggleSection = (key) => {
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -606,25 +649,27 @@ export default function JobDetail() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {characters.map((char, idx) => {
                       const lock = characterLocks[char.name] || characterLocks[char.name.toLowerCase()];
-                      const hasMasterImage = Boolean(lock?.referenceImagePath);
+                      const hasMasterImage = Boolean(lock?.hasReferenceImage || lock?.referenceImagePath);
+                      const isRegen = regeneratingKey === `char:${char.name}`;
+                      const isActiveRef = activeReference === `char:${char.name}`;
+                      const imageUrl = getCharacterLockImageUrl(id, char.name);
 
                       return (
                         <div
                           key={idx}
-                          className="flex flex-col bg-[var(--bg-sunken)] border border-[var(--glass-border)] rounded-[var(--radius-md)] p-4 relative overflow-hidden group hover:border-[var(--border-default)] transition-colors"
+                          className={`flex flex-col bg-[var(--bg-sunken)] border rounded-[var(--radius-md)] p-4 relative overflow-hidden group transition-colors ${isActiveRef ? 'border-[var(--brand-primary)] ring-1 ring-[color-mix(in_srgb,var(--brand-primary)_40%,transparent)]' : 'border-[var(--glass-border)] hover:border-[var(--border-default)]'}`}
                         >
                           <div className="flex items-start gap-3.5 mb-3">
-                            {/* Avatar / Master Reference Image */}
                             <CharacterAvatar
                               jobId={id}
                               name={char.name}
                               role={char.role}
                               hasLockImage={hasMasterImage}
+                              cacheKey={lock?.regeneratedAt || ''}
                               physicalDescription={char.physicalDescription}
                               onPreview={setPreviewImage}
                             />
 
-                            {/* Name & Role */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="font-semibold text-sm text-[var(--text-primary)] truncate">{char.name}</h4>
@@ -656,10 +701,54 @@ export default function JobDetail() {
                                     : 'Detailed Prompt Lock Active'}
                                 </span>
                               </div>
+
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                <AppButton
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={!hasMasterImage}
+                                  onClick={() => setPreviewImage({
+                                    title: `${char.name} — Master Character Lock`,
+                                    badge: 'CHARACTER LOCK',
+                                    icon: <User size={16} />,
+                                    src: imageUrl,
+                                    label: 'Character Appearance',
+                                    subtitle: char.physicalDescription || 'Master character reference.',
+                                  })}
+                                >
+                                  <Eye size={12} className="mr-1" /> Preview
+                                </AppButton>
+                                <AppButton
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={!!regeneratingKey}
+                                  onClick={() => handleRegenerateCharacter(char.name)}
+                                >
+                                  <RefreshCw size={12} className={`mr-1 ${isRegen ? 'animate-spin' : ''}`} />
+                                  {isRegen ? 'Regenerating…' : 'Regenerate'}
+                                </AppButton>
+                                <AppButton
+                                  size="sm"
+                                  variant={isActiveRef ? 'primary' : 'secondary'}
+                                  disabled={!hasMasterImage}
+                                  onClick={() => {
+                                    setActiveReference(`char:${char.name}`);
+                                    setPreviewImage({
+                                      title: `${char.name} — Active Reference`,
+                                      badge: 'ACTIVE REFERENCE',
+                                      icon: <ShieldCheck size={16} />,
+                                      src: imageUrl,
+                                      label: 'Active character reference',
+                                      subtitle: 'Marked as the active visual reference for this job.',
+                                    });
+                                  }}
+                                >
+                                  Use
+                                </AppButton>
+                              </div>
                             </div>
                           </div>
 
-                          {/* Physical Description */}
                           {char.physicalDescription && (
                             <div className="text-xs text-[var(--text-secondary)] mb-2 line-clamp-3 bg-[var(--bg-surface)] p-2 rounded border border-[var(--glass-border)]">
                               <span className="font-medium text-[var(--text-primary)]">Appearance: </span>
@@ -667,7 +756,6 @@ export default function JobDetail() {
                             </div>
                           )}
 
-                          {/* Wardrobe */}
                           {char.clothingDefault && (
                             <div className="text-[11px] text-[var(--text-muted)] flex items-start gap-1.5 mt-auto pt-1">
                               <Shirt size={12} className="shrink-0 text-[var(--brand-light)] mt-0.5" />
@@ -716,7 +804,15 @@ export default function JobDetail() {
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {environments.map((env, idx) => (
+                    {environments.map((env, idx) => {
+                      const envLocks = job.environmentLocks || {};
+                      const lock = envLocks[env.locationId] || envLocks[env.name] || envLocks[String(env.locationId || '').toLowerCase()];
+                      const hasMasterImage = Boolean(lock?.hasReferenceImage || lock?.referenceImagePath);
+                      const locKey = env.locationId || env.name;
+                      const isRegen = regeneratingKey === `env:${locKey}`;
+                      const imageUrl = getEnvironmentLockImageUrl(id, locKey);
+
+                      return (
                       <div
                         key={idx}
                         className="flex flex-col bg-[var(--bg-sunken)] border border-[var(--glass-border)] rounded-[var(--radius-md)] p-4 hover:border-[var(--border-default)] transition-colors"
@@ -724,9 +820,11 @@ export default function JobDetail() {
                         <div className="flex items-start gap-3.5 mb-2">
                           <EnvironmentPlate
                             jobId={id}
-                            locationId={env.locationId}
+                            locationId={locKey}
                             name={env.name || env.locationId}
                             description={env.description}
+                            hasLockImage={hasMasterImage}
+                            cacheKey={lock?.regeneratedAt || ''}
                             onPreview={setPreviewImage}
                           />
                           <div className="flex-1 min-w-0">
@@ -737,6 +835,32 @@ export default function JobDetail() {
                               </span>
                             </div>
                             <span className="text-[10px] font-mono text-[var(--text-muted)]">ID: {env.locationId}</span>
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              <AppButton
+                                size="sm"
+                                variant="secondary"
+                                disabled={!hasMasterImage}
+                                onClick={() => setPreviewImage({
+                                  title: `${env.name || locKey} — Environment Plate`,
+                                  badge: 'MASTER LOCATION SET',
+                                  icon: <Film size={16} />,
+                                  src: imageUrl,
+                                  label: 'Location Environment',
+                                  subtitle: env.description || 'Master location plate.',
+                                })}
+                              >
+                                <Eye size={12} className="mr-1" /> Preview
+                              </AppButton>
+                              <AppButton
+                                size="sm"
+                                variant="secondary"
+                                disabled={!!regeneratingKey}
+                                onClick={() => handleRegenerateEnvironment(locKey)}
+                              >
+                                <RefreshCw size={12} className={`mr-1 ${isRegen ? 'animate-spin' : ''}`} />
+                                {isRegen ? 'Regenerating…' : 'Regenerate'}
+                              </AppButton>
+                            </div>
                           </div>
                         </div>
 
@@ -763,7 +887,8 @@ export default function JobDetail() {
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

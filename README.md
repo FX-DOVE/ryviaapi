@@ -470,6 +470,16 @@ For long-form drama, movie, and anime jobs on a VPS:
 3. Ensure `RUNPOD_QWEN_EDIT_ENDPOINT_ID` is set — character identity conditioning requires the edit endpoint (not text-to-image alone).
 4. Failed scenes no longer silently assemble: if all (or ≥50%) of scenes fail segment generation, the job fails with a clear error so you can retry after fixing GPU / refs.
 
+
+### 5b. Billing, wallet & email
+
+- **No free credits on register** — new workspaces start at `$0`. Studio balance is funded via Paystack top-ups or admin/coupon grants.
+- **Top-up credit ratio** — users pay 2× the wallet credit they receive (`TOPUP_CREDIT_RATIO=0.5` in `backend/src/config/billing.js`). Example: pay $50 → receive $25 studio balance.
+- **Job markup** — completed jobs bill infrastructure cost × `1.25` (`JOB_MARKUP_RATE=0.25`). Markup is never exposed in public cost APIs.
+- **Coupons** — admins create codes under `/api/system/coupons`; users redeem via `POST /api/billing/coupons/redeem`.
+- **Email** — set `EMAIL_HOST` / `EMAIL_PORT` / `EMAIL_USER` / `EMAIL_PASS` / `EMAIL_FROM` / `APP_URL` in `.env`. When `EMAIL_HOST` is unset, mail is skipped safely (welcome, password reset, video ready, admin bulk).
+
+
 ### 5. Nginx Web Server Configuration
 Copy the provided Nginx configuration file:
 ```bash

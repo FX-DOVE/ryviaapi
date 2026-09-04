@@ -33,6 +33,12 @@ api.interceptors.response.use(
   }
 );
 
+function withAuthToken(url) {
+  const token = localStorage.getItem('accessToken');
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
+}
 
 // ─── JOBS ─────────────────────────────────────────────────────────────────
 export const createJob = (formData) =>
@@ -51,12 +57,20 @@ export const resumeJob     = (id) => api.post(`/jobs/${id}/resume`);
 export const retryJob      = (id) => api.post(`/jobs/${id}/retry`);
 export const retryScene    = (id, sceneId) => api.post(`/jobs/${id}/scenes/${sceneId}/retry`);
 
-export const getVideoStreamUrl    = (id) => `/api/jobs/${id}/stream`;
-export const getThumbnailUrl      = (id) => `/api/jobs/${id}/thumbnail`;
-export const getSceneImageUrl     = (jobId, sceneId) => `/api/jobs/${jobId}/scenes/${sceneId}/image`;
-export const getSceneVideoUrl     = (jobId, sceneId) => `/api/jobs/${jobId}/scenes/${sceneId}/video`;
-export const getCharacterLockImageUrl = (jobId, charName) => `/api/jobs/${jobId}/characters/${encodeURIComponent(charName)}/image`;
-export const getEnvironmentLockImageUrl = (jobId, locId) => `/api/jobs/${jobId}/environments/${encodeURIComponent(locId)}/image`;
+export const regenerateCharacterLock = (jobId, characterName) =>
+  api.post(`/jobs/${jobId}/characters/${encodeURIComponent(characterName)}/regenerate`);
+
+export const regenerateEnvironmentLock = (jobId, locationId) =>
+  api.post(`/jobs/${jobId}/environments/${encodeURIComponent(locationId)}/regenerate`);
+
+export const getVideoStreamUrl    = (id) => withAuthToken(`/api/jobs/${id}/stream`);
+export const getThumbnailUrl      = (id) => withAuthToken(`/api/jobs/${id}/thumbnail`);
+export const getSceneImageUrl     = (jobId, sceneId) => withAuthToken(`/api/jobs/${jobId}/scenes/${sceneId}/image`);
+export const getSceneVideoUrl     = (jobId, sceneId) => withAuthToken(`/api/jobs/${jobId}/scenes/${sceneId}/video`);
+export const getCharacterLockImageUrl = (jobId, charName) =>
+  withAuthToken(`/api/jobs/${jobId}/characters/${encodeURIComponent(charName)}/image`);
+export const getEnvironmentLockImageUrl = (jobId, locId) =>
+  withAuthToken(`/api/jobs/${jobId}/environments/${encodeURIComponent(locId)}/image`);
 
 // ─── USER ─────────────────────────────────────────────────────────────────
 export const getMe = () => api.get('/users/me');

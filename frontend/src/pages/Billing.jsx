@@ -11,6 +11,7 @@ import {
   getLedger,
   initializeTopup,
   verifyTopup,
+  redeemCoupon,
   formatUsd,
 } from '../api/billing';
 import useAppStore from '../store/useAppStore';
@@ -26,6 +27,8 @@ export default function Billing() {
   const [paying, setPaying] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
 
   const load = async () => {
     try {
@@ -90,6 +93,25 @@ export default function Billing() {
     } catch (e) {
       setError(e.response?.data?.error || e.message || 'Could not start payment');
       setPaying(null);
+    }
+  };
+
+  const handleRedeemCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setError('');
+    setMessage('');
+    setRedeeming(true);
+    try {
+      const { data } = await redeemCoupon(couponCode.trim());
+      setMessage(`Coupon applied. ${formatUsd(data.creditUsd)} added to your studio.`);
+      setBalanceUsd(data.balanceUsd);
+      setWallet({ balanceUsd: data.balanceUsd });
+      setCouponCode('');
+      await load();
+    } catch (e) {
+      setError(e.response?.data?.error || 'Could not redeem coupon');
+    } finally {
+      setRedeeming(false);
     }
   };
 
@@ -186,6 +208,25 @@ export default function Billing() {
             onClick={() => startPay({ creditUsd: customValue })}
           >
             {paying === 'custom' ? 'Redirecting…' : 'Pay with Paystack'}
+          </AppButton>
+        </div>
+      </AppCard>
+
+      <AppCard className="custom-topup">
+        <h3 className="card-title mb-2">Redeem coupon</h3>
+        <p className="body-text text-sm mb-4">Have a promo code? Apply it to add studio balance.</p>
+        <div className="custom-topup-row">
+          <AppInput
+            label="Coupon code"
+            value={couponCode}
+            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+            placeholder="STUDIO50"
+          />
+          <AppButton
+            disabled={redeeming || !couponCode.trim()}
+            onClick={handleRedeemCoupon}
+          >
+            {redeeming ? 'Redeeming…' : 'Redeem'}
           </AppButton>
         </div>
       </AppCard>

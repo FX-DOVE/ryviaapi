@@ -159,6 +159,8 @@ export async function getJobDetail(req, res, next) {
             const fullPath = path.join(cDir, file);
             if (!jobObj.characterLocks[rawName]) {
               jobObj.characterLocks[rawName] = { referenceImagePath: fullPath };
+            } else if (!jobObj.characterLocks[rawName].referenceImagePath) {
+              jobObj.characterLocks[rawName].referenceImagePath = fullPath;
             }
           }
         }
@@ -176,11 +178,31 @@ export async function getJobDetail(req, res, next) {
             const fullPath = path.join(eDir, file);
             if (!jobObj.environmentLocks[rawName]) {
               jobObj.environmentLocks[rawName] = { referenceImagePath: fullPath };
+            } else if (!jobObj.environmentLocks[rawName].referenceImagePath) {
+              jobObj.environmentLocks[rawName].referenceImagePath = fullPath;
             }
           }
         }
       }
     } catch {}
+
+    // Flag locks that have a readable reference image on disk for the FE.
+    for (const [name, lock] of Object.entries(jobObj.characterLocks || {})) {
+      const pathOnDisk = lock?.referenceImagePath;
+      const exists = Boolean(pathOnDisk && fs.existsSync(pathOnDisk));
+      jobObj.characterLocks[name] = {
+        ...(typeof lock === 'object' && lock ? lock : { lockPrompt: lock }),
+        hasReferenceImage: exists,
+      };
+    }
+    for (const [name, lock] of Object.entries(jobObj.environmentLocks || {})) {
+      const pathOnDisk = lock?.referenceImagePath;
+      const exists = Boolean(pathOnDisk && fs.existsSync(pathOnDisk));
+      jobObj.environmentLocks[name] = {
+        ...(typeof lock === 'object' && lock ? lock : { lockPrompt: lock }),
+        hasReferenceImage: exists,
+      };
+    }
 
     res.json(jobObj);
   } catch (err) {
@@ -695,3 +717,112 @@ export async function streamEnvironmentLockImage(req, res, next) {
   }
 }
 
+
+// ─── REGENERATE CHARACTER LOCK ───────────────────────────────────────────────
+export async function regenerateCharacterLock(req, res, next) {
+  try {
+    const job = await Job.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const characterName = decodeURIComponent(req.params.characterName);
+    const planChars = job.directorPlan?.characters || [];
+    const character = planChars.find(
+      (c) => c.name === characterName
+        || String(c.name || '').toLowerCase() === characterName.toLowerCase(),
+    );
+    if (!character) {
+      return res.status(404).json({ error: `Character "${characterName}" not found in director plan` });
+    }
+
+    const { createCharacterLock } = await import('../services/consistencyLockService.js');
+    const safeName = character.name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const cDir = charLockDir(String(job._id));
+    for (const ext of ['.jpg', '.png']) {
+      const existing = path.join(cDir, `${safeName}_reference${ext}`);
+      if (fs.existsSync(existing)) {
+        try { fs.unlinkSync(existing); } catch {}
+      }
+    }
+
+    const animationStyle = job.input?.style || job.styleGuide || 'cinematic';
+    const worldDna = job.visualDna || null;
+    const lock = await createCharacterLock(character, animationStyle, String(job._id), worldDna);
+
+    const locks = { ...(job.characterLocks || {}) };
+    locks[character.name] = {
+      lockPrompt: lock.lockPrompt,
+      referenceImagePath: lock.referenceImagePath,
+      referenceUsed: lock.referenceUsed,
+      visualAnalysis: lock.visualAnalysis,
+      hasReferenceImage: Boolean(lock.referenceImagePath && fs.existsSync(lock.referenceImagePath)),
+      regeneratedAt: new Date().toISOString(),
+    };
+    job.characterLocks = locks;
+    job.markModified('characterLocks');
+    await job.save();
+
+    res.json({
+      success: true,
+      characterName: character.name,
+      lock: locks[character.name],
+      imagePath: `/api/jobs/${job._id}/characters/${encodeURIComponent(character.name)}/image`,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── REGENERATE ENVIRONMENT LOCK ─────────────────────────────────────────────
+export async function regenerateEnvironmentLock(req, res, next) {
+  try {
+    const job = await Job.findOne({ _id: req.params.id, userId: req.user._id });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const locationId = decodeURIComponent(req.params.locationId);
+    const planEnvs = job.directorPlan?.environments || [];
+    const environment = planEnvs.find(
+      (e) => e.locationId === locationId
+        || e.name === locationId
+        || String(e.locationId || '').toLowerCase() === locationId.toLowerCase(),
+    );
+    if (!environment) {
+      return res.status(404).json({ error: `Environment "${locationId}" not found in director plan` });
+    }
+
+    const { createEnvironmentLock } = await import('../services/consistencyLockService.js');
+    const safeId = (environment.locationId || environment.name || 'location')
+      .replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const eDir = envLockDir(String(job._id));
+    for (const ext of ['.jpg', '.png']) {
+      const existing = path.join(eDir, `${safeId}_reference${ext}`);
+      if (fs.existsSync(existing)) {
+        try { fs.unlinkSync(existing); } catch {}
+      }
+    }
+
+    const animationStyle = job.input?.style || job.styleGuide || 'cinematic';
+    const worldDna = job.visualDna || null;
+    const lock = await createEnvironmentLock(environment, animationStyle, String(job._id), worldDna);
+
+    const locks = { ...(job.environmentLocks || {}) };
+    const key = environment.locationId || environment.name;
+    locks[key] = {
+      lockPrompt: lock.lockPrompt,
+      referenceImagePath: lock.referenceImagePath,
+      hasReferenceImage: Boolean(lock.referenceImagePath && fs.existsSync(lock.referenceImagePath)),
+      regeneratedAt: new Date().toISOString(),
+    };
+    job.environmentLocks = locks;
+    job.markModified('environmentLocks');
+    await job.save();
+
+    res.json({
+      success: true,
+      locationId: key,
+      lock: locks[key],
+      imagePath: `/api/jobs/${job._id}/environments/${encodeURIComponent(key)}/image`,
+    });
+  } catch (err) {
+    next(err);
+  }
+}

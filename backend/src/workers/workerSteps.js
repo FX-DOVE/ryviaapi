@@ -18,6 +18,7 @@ import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
 
+import User from '../models/User.js';
 import Job    from '../models/Job.js';
 import Scene  from '../models/Scene.js';
 import Asset  from '../models/Asset.js';
@@ -908,6 +909,20 @@ export async function processUploadStep(jobId) {
 export async function processNotificationStep(jobId, type, message, recipient) {
   emitJobEvent(jobId, 'job_completed', { message, recipient });
   console.log(`[NotificationService] Notification: "${message}" → ${recipient}`);
+
+  if (type === 'email') {
+    try {
+      const job = await Job.findById(jobId).select('title userId status');
+      const userId = recipient || job?.userId;
+      const user = userId ? await User.findById(userId).select('email name') : null;
+      if (user?.email) {
+        const { sendVideoReadyEmail } = await import('../services/emailService.js');
+        await sendVideoReadyEmail(user, job);
+      }
+    } catch (mailErr) {
+      console.warn(`[NotificationService] video-ready email failed: ${mailErr.message}`);
+    }
+  }
 }
 
 // ─── Legacy compatibility stubs (for executionEngine.js) ──────────────────────
