@@ -8,6 +8,7 @@ import {
   streamCharacterLockImage, streamEnvironmentLockImage,
   stopJob, resumeJob, retryJob, retryScene
 } from '../controllers/jobController.js';
+import editorRoutes from './editor.js';
 
 const router = Router();
 
@@ -37,5 +38,8 @@ router.get('/:id/environments/:locationId/image',  streamEnvironmentLockImage);
 router.get('/:id/scenes/:sceneId/image', streamSceneImage);
 router.get('/:id/scenes/:sceneId/video', streamSceneVideo);
 router.post('/:id/scenes/:sceneId/retry', retryScene);
+
+// CapCut-style in-app film editor
+router.use('/:id/editor', editorRoutes);
 
 export default router;

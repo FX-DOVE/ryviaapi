@@ -2110,9 +2110,19 @@ export default function FilmStudioPage() {
                 </button>
               )}
               {generatedScreenplay.status === 'completed' && (
-                <button className="btn-produce btn-lg" onClick={() => navigate('/app/history')}>
-                  <ListChecks size={16} style={{ display: "inline", marginRight: 6 }} />View Results
-                </button>
+                <>
+                  {generatedScreenplay.jobId && (
+                    <button
+                      className="btn-secondary btn-lg"
+                      onClick={() => navigate(`/app/jobs/${generatedScreenplay.jobId}/editor`)}
+                    >
+                      Edit in Studio
+                    </button>
+                  )}
+                  <button className="btn-produce btn-lg" onClick={() => navigate(generatedScreenplay.jobId ? `/app/jobs/${generatedScreenplay.jobId}` : '/app/history')}>
+                    <ListChecks size={16} style={{ display: "inline", marginRight: 6 }} />View Results
+                  </button>
+                </>
               )}
             </div>
           </div>

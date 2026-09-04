@@ -10,6 +10,7 @@ import Billing    from './pages/Billing';
 import Admin      from './pages/Admin';
 import ProjectsPage from './pages/ProjectsPage';
 import FilmStudioPage from './pages/FilmStudioPage';
+import FilmEditorPage from './pages/FilmEditorPage';
 import LandingPage from './pages/landingpage/LandingPage';
 import { useSocketGlobal } from './hooks/useSocket';
 
@@ -133,6 +134,7 @@ function AppRoutes() {
         <Route path="history" element={<History />} />
         <Route path="jobs" element={<Navigate to="/app/history" replace />} />
         <Route path="jobs/:id" element={<JobDetail />} />
+        <Route path="jobs/:id/editor" element={<FilmEditorPage />} />
         <Route path="billing" element={<Billing />} />
 
         {/* Admin-only routes */}

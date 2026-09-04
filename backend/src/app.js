@@ -67,7 +67,7 @@ app.post(
   paystackWebhook,
 );
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/mock-storage', express.static(path.join(process.cwd(), 'storage', 'public', 'mock-storage')));
 

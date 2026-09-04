@@ -87,6 +87,17 @@ const jobSchema = new mongoose.Schema(
       totalDuration:   { type: Number, default: null },
     },
 
+    // ── In-app Film Editor (CapCut-style timeline) ─────────────
+    editTimeline:    { type: mongoose.Schema.Types.Mixed, default: null },
+    editorExport: {
+      status:     { type: String, default: null }, // idle|queued|rendering|done|failed
+      progress:   { type: Number, default: 0 },
+      outputPath: { type: String, default: null },
+      error:      { type: String, default: null },
+      startedAt:  { type: Date, default: null },
+      finishedAt: { type: Date, default: null },
+    },
+
     // Output
     finalVideoPath:  { type: String, default: null },
     thumbnailPath:   { type: String, default: null },
