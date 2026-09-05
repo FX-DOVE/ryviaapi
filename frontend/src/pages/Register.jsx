@@ -1,14 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { AuthLayout } from '../components/ui/AuthLayout';
 import { AppInput } from '../components/ui/AppInput';
 import { AppButton } from '../components/ui/AppButton';
+
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  show,
+  onToggleShow,
+  placeholder = '••••••••',
+  autoComplete = 'new-password',
+  required = true,
+  minLength = 6,
+}) {
+  return (
+    <div className="form-group relative">
+      <label htmlFor={id} className="form-label">{label}</label>
+      <div className="relative">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          required={required}
+          minLength={minLength}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          className="form-input pr-11"
+        />
+        <button
+          type="button"
+          onClick={onToggleShow}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
+          aria-label={show ? 'Hide password' : 'Show password'}
+          tabIndex={0}
+        >
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -23,6 +67,16 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -37,7 +91,6 @@ export default function Register() {
         throw new Error(data.error || 'Registration failed');
       }
 
-      // Do not log in yet — verify email first
       const targetEmail = data.email || email;
       navigate(`/verify-email?email=${encodeURIComponent(targetEmail)}`);
     } catch (err) {
@@ -74,28 +127,34 @@ export default function Register() {
           placeholder="name@company.com"
         />
 
-        <AppInput
+        <PasswordField
+          id="register-password"
           label="Password"
-          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={6}
-          placeholder="••••••••"
+          show={showPassword}
+          onToggleShow={() => setShowPassword((v) => !v)}
+        />
+
+        <PasswordField
+          id="register-confirm-password"
+          label="Confirm Password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          show={showConfirm}
+          onToggleShow={() => setShowConfirm((v) => !v)}
         />
 
         <div className="pt-2">
-          <AppButton
-            type="submit"
-            disabled={loading}
-            className="w-full"
-          >
+          <AppButton type="submit" disabled={loading} className="w-full">
             {loading ? (
               <>
                 <div className="spinner w-5 h-5 border-white border-t-transparent mr-2"></div>
                 Sending code…
               </>
-            ) : 'Continue'}
+            ) : (
+              'Continue'
+            )}
           </AppButton>
         </div>
       </form>
@@ -103,7 +162,10 @@ export default function Register() {
       <div className="text-center mt-8 pt-6 border-t border-[var(--border-subtle)]">
         <p className="text-sm text-[var(--text-secondary)]">
           Already have an account?{' '}
-          <Link to="/login" className="text-[var(--text-primary)] font-semibold hover:text-[var(--brand-light)] transition-colors underline decoration-[var(--border-subtle)] hover:decoration-[var(--brand-light)] underline-offset-4">
+          <Link
+            to="/login"
+            className="text-[var(--text-primary)] font-semibold hover:text-[var(--brand-light)] transition-colors underline decoration-[var(--border-subtle)] hover:decoration-[var(--brand-light)] underline-offset-4"
+          >
             Sign in
           </Link>
         </p>

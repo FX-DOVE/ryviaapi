@@ -22,7 +22,9 @@ export async function startJobPipeline(jobId, steps = null) {
 
     const allScenesDone = scenes.length > 0 && scenes.every(s => s.status === 'done' && Boolean(s.videoPath));
     const hasDirectorPlan = Boolean(job.directorPlan?.acts?.length);
-    const hasLocks = Object.keys(job.characterLocks || {}).length > 0 || Object.keys(job.environmentLocks || {}).length > 0;
+    const hasRealCharLock = Object.values(job.characterLocks || {}).some((v) => v && (v.referenceImagePath || (typeof v === 'string' && v)));
+    const hasRealEnvLock = Object.values(job.environmentLocks || {}).some((v) => v && (v.referenceImagePath || (typeof v === 'string' && v)));
+    const hasLocks = hasRealCharLock || hasRealEnvLock;
 
     if (job.finalVideoUrl || (job.finalVideoPath && typeof job.finalVideoPath === 'string')) {
       // Final video already rendered! Resume directly at upload/notification

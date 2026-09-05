@@ -11,10 +11,21 @@ import Workspace from '../models/Workspace.js';
 import { startJobPipeline } from '../services/executionEngine.js';
 import { createJobDirs, deleteJobFiles } from '../services/storageService.js';
 import { setJobSignal, clearJobSignal } from '../services/jobControlService.js';
-import { JOB_STATUS, SCENE_STATUS, charLockDir, envLockDir, sceneImgDir, sceneVidDir, segmentDir } from '../config/constants.js';
+import { JOB_STATUS, SCENE_STATUS, charLockDir, envLockDir, sceneImgDir, sceneVidDir, segmentDir, outputDir } from '../config/constants.js';
 import { assertCanAfford, estimateJobBilledUsdFromInput, reserveEstimateOnJob } from '../services/walletService.js';
 import FilmCharacter from '../models/FilmCharacter.js';
 
+
+
+/** Prefer a local disk path for streaming; fall back to outputs/<jobId>/final.mp4 when DB holds a cloud URL. */
+function resolveLocalMediaPath(jobId, storedPath, filename) {
+  if (storedPath && typeof storedPath === 'string' && !/^https?:\/\//i.test(storedPath) && fs.existsSync(storedPath)) {
+    return storedPath;
+  }
+  const local = path.join(outputDir(String(jobId)), filename);
+  if (fs.existsSync(local)) return local;
+  return null;
+}
 
 // ─── CREATE JOB ──────────────────────────────────────────────────────────────
 export async function createJob(req, res, next) {
@@ -304,11 +315,15 @@ export async function streamVideo(req, res, next) {
       'finalVideoPath status',
     );
 
-    if (!job)                 return res.status(404).json({ error: 'Job not found' });
-    if (!job.finalVideoPath)  return res.status(404).json({ error: 'Video not yet available' });
-    if (!fs.existsSync(job.finalVideoPath)) return res.status(404).json({ error: 'Video file missing from storage' });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
 
-    const stat     = fs.statSync(job.finalVideoPath);
+    const videoPath = resolveLocalMediaPath(req.params.id, job.finalVideoPath, 'final.mp4');
+    if (!videoPath) {
+      if (!job.finalVideoPath) return res.status(404).json({ error: 'Video not yet available' });
+      return res.status(404).json({ error: 'Video file missing from storage' });
+    }
+
+    const stat     = fs.statSync(videoPath);
     const fileSize = stat.size;
     const range    = req.headers.range;
 
@@ -325,14 +340,14 @@ export async function streamVideo(req, res, next) {
         'Content-Type':   'video/mp4',
       });
 
-      fs.createReadStream(job.finalVideoPath, { start, end }).pipe(res);
+      fs.createReadStream(videoPath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type':   'video/mp4',
         'Accept-Ranges':  'bytes',
       });
-      fs.createReadStream(job.finalVideoPath).pipe(res);
+      fs.createReadStream(videoPath).pipe(res);
     }
   } catch (err) {
     next(err);
@@ -347,13 +362,16 @@ export async function streamThumbnail(req, res, next) {
       'thumbnailPath',
     );
 
-    if (!job?.thumbnailPath || !fs.existsSync(job.thumbnailPath)) {
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const thumbPath = resolveLocalMediaPath(req.params.id, job.thumbnailPath, 'thumbnail.jpg');
+    if (!thumbPath) {
       return res.status(404).json({ error: 'Thumbnail not available' });
     }
 
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    fs.createReadStream(job.thumbnailPath).pipe(res);
+    fs.createReadStream(thumbPath).pipe(res);
   } catch (err) {
     next(err);
   }
