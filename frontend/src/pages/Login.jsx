@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { AuthLayout } from '../components/ui/AuthLayout';
 import { AppInput } from '../components/ui/AppInput';
 import { AppButton } from '../components/ui/AppButton';
@@ -8,6 +8,7 @@ import { AppButton } from '../components/ui/AppButton';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -64,34 +65,51 @@ export default function Login() {
           onChange={(e) => setEmail(e.target.value)}
           required
           placeholder="name@company.com"
+          autoComplete="email"
         />
 
-        <div className="relative">
-          <div className="absolute right-0 top-0">
-          <Link to="/forgot-password" className="text-xs font-medium text-[var(--brand-light)] hover:text-[var(--text-primary)] transition-colors mt-1 block">Forgot password?</Link>
+        <div className="form-group relative">
+          <div className="flex items-center justify-between mb-1.5 gap-2">
+            <label htmlFor="login-password" className="form-label mb-0">Password</label>
+            <Link
+              to="/forgot-password"
+              className="text-xs font-medium text-[var(--brand-light)] hover:text-[var(--text-primary)] transition-colors shrink-0"
+            >
+              Forgot password?
+            </Link>
           </div>
-          <AppInput
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            placeholder="••••••••"
-          />
+          <div className="relative">
+            <input
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="••••••••"
+              autoComplete="current-password"
+              className="form-input pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
 
         <div className="pt-2">
-          <AppButton
-            type="submit"
-            disabled={loading}
-            className="w-full"
-          >
+          <AppButton type="submit" disabled={loading} className="w-full">
             {loading ? (
               <>
                 <div className="spinner w-5 h-5 border-white border-t-transparent mr-2"></div>
                 Authenticating...
               </>
-            ) : 'Sign In'}
+            ) : (
+              'Sign In'
+            )}
           </AppButton>
         </div>
       </form>
@@ -99,7 +117,10 @@ export default function Login() {
       <div className="text-center mt-8 pt-6 border-t border-[var(--border-subtle)]">
         <p className="text-sm text-[var(--text-secondary)]">
           New to Reyvia?{' '}
-          <Link to="/register" className="text-[var(--text-primary)] font-semibold hover:text-[var(--brand-light)] transition-colors underline decoration-[var(--border-subtle)] hover:decoration-[var(--brand-light)] underline-offset-4">
+          <Link
+            to="/register"
+            className="text-[var(--text-primary)] font-semibold hover:text-[var(--brand-light)] transition-colors underline decoration-[var(--border-subtle)] hover:decoration-[var(--brand-light)] underline-offset-4"
+          >
             Create an account
           </Link>
         </p>
