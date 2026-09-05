@@ -100,6 +100,8 @@ const jobSchema = new mongoose.Schema(
 
     // Output
     finalVideoPath:  { type: String, default: null },
+    finalVideoUrl:   { type: String, default: null },
+    thumbnailUrl:    { type: String, default: null },
     thumbnailPath:   { type: String, default: null },
     duration:        { type: Number, default: null },   // seconds
     fileSize:        { type: Number, default: null },   // bytes

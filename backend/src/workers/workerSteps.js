@@ -869,11 +869,17 @@ export async function processUploadStep(jobId) {
   await Asset.create({ jobId, type: 'final_video', path: finalVideoUrl, size: fileSize });
   await Asset.create({ jobId, type: 'thumbnail', path: thumbnailUrl, size: 10000 });
 
+  // Keep local disk paths in finalVideoPath/thumbnailPath so /stream works.
+  // Cloud URLs live on Asset records (and optional finalVideoUrl if present).
+  const localFinal = job.finalVideoPath;
+  const localThumb = job.thumbnailPath;
   await Job.findByIdAndUpdate(jobId, {
     status:         JOB_STATUS.COMPLETED,
     progress:       100,
-    finalVideoPath: finalVideoUrl,
-    thumbnailPath:  thumbnailUrl,
+    finalVideoPath: localFinal,
+    thumbnailPath:  localThumb,
+    finalVideoUrl,
+    thumbnailUrl,
     fileSize,
     completedAt:    new Date(),
   });
