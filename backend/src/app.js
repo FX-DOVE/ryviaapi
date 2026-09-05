@@ -7,6 +7,9 @@ import helmet        from 'helmet';
 import morgan        from 'morgan';
 import compression   from 'compression';
 
+import fs            from 'fs';
+import { fileURLToPath } from 'url';
+
 import { initSocket, broadcast } from './config/socket.js';
 import { errorHandler }          from './middleware/errorHandler.js';
 import { authMiddleware }        from './middleware/auth.js';
@@ -23,6 +26,9 @@ import filmCharRoutes   from './routes/filmCharacters.js';
 import billingRoutes    from './routes/billing.js';
 import { paystackWebhook } from './controllers/billingController.js';
 // Providers are configured via .env file
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 const app    = express();
 const server = http.createServer(app);
@@ -99,6 +105,31 @@ app.use('/api/billing',          authMiddleware, billingRoutes);
 
 
 app.get('/api/ping', (req, res) => res.json({ pong: true, ts: Date.now() }));
+
+// ─── STATIC FRONTEND SERVING & SPA FALLBACK ─────────────────────────────────
+const candidateDistPaths = [
+  path.resolve(process.cwd(), 'frontend', 'dist'),
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(__dirname, '../../../frontend/dist'),
+  '/var/www/ryviaapi/frontend/dist',
+];
+const frontendDist = candidateDistPaths.find(p => fs.existsSync(path.join(p, 'index.html')));
+
+if (frontendDist) {
+  console.log(`[App] Serving frontend build from: ${frontendDist}`);
+  app.use(express.static(frontendDist, { maxAge: '1h' }));
+
+  app.get('*', (req, res, next) => {
+    if (
+      req.path.startsWith('/api') ||
+      req.path.startsWith('/mock-storage') ||
+      req.path.startsWith('/socket.io')
+    ) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
