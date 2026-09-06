@@ -11,7 +11,41 @@ import path from 'path';
 import axios from 'axios';
 import mongoose from 'mongoose';
 
+
 const router = express.Router();
+
+/**
+ * List/get responses must not expose expired R2/S3 presigned URLs.
+ * Prefer the stable API proxy when a reference exists; workers still refresh
+ * signed URLs from referenceImageKey via storageService when they need them.
+ */
+function hasFilmCharacterReference(character) {
+  if (!character) return false;
+  if (character.referenceImageKey) return true;
+  const url = character.referenceImageUrl;
+  if (!url || typeof url !== 'string') return false;
+  // Local / relative paths still count as a reference existing
+  if (url.startsWith('/') || url.startsWith('mock-storage')) return true;
+  if (url.startsWith('http://') || url.startsWith('https://')) return true;
+  return Boolean(url);
+}
+
+function toPublicFilmCharacter(character) {
+  const obj = typeof character?.toObject === 'function'
+    ? character.toObject()
+    : { ...(character || {}) };
+  const id = obj._id != null ? String(obj._id) : null;
+  if (id && hasFilmCharacterReference(obj)) {
+    obj.referenceImageUrl = `/api/v1/film-characters/${id}/reference-image`;
+  } else if (obj.referenceImageUrl
+    && (String(obj.referenceImageUrl).startsWith('http://')
+      || String(obj.referenceImageUrl).startsWith('https://'))) {
+    // Stale signed URL with no usable key — omit rather than return a dead link
+    obj.referenceImageUrl = null;
+  }
+  return obj;
+}
+
 
 // Validate ObjectId for all routes containing :id parameter
 router.param('id', (req, res, next, id) => {
@@ -29,7 +63,7 @@ router.get('/', async (req, res, next) => {
     if (projectId) filter.projectId = projectId;
 
     const characters = await FilmCharacter.find(filter).sort({ name: 1 });
-    res.json({ characters });
+    res.json({ characters: characters.map(toPublicFilmCharacter) });
   } catch (err) { next(err); }
 });
 
@@ -38,7 +72,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const character = await FilmCharacter.findOne({ _id: req.params.id, workspaceId: req.workspaceId });
     if (!character) return res.status(404).json({ error: 'Character not found' });
-    res.json({ character });
+    res.json({ character: toPublicFilmCharacter(character) });
   } catch (err) { next(err); }
 });
 
@@ -125,7 +159,7 @@ router.post('/', async (req, res, next) => {
     character.seedPrompt = compileCharacterSeedPrompt(character);
     await character.save();
 
-    res.status(201).json({ character });
+    res.status(201).json({ character: toPublicFilmCharacter(character) });
   } catch (err) { next(err); }
 });
 
@@ -152,7 +186,7 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     await character.save();
-    res.json({ character });
+    res.json({ character: toPublicFilmCharacter(character) });
   } catch (err) { next(err); }
 });
 
@@ -201,7 +235,9 @@ router.post('/:id/reference-image', upload.single('file'), async (req, res, next
     character.referenceImageKey = cloudKey;
     await character.save();
 
-    res.json({ character, referenceImageUrl: cloudUrl });
+    // Keep top-level signed URL for immediate post-upload use; public character
+    // payload uses the non-expiring proxy so list/get stay consistent.
+    res.json({ character: toPublicFilmCharacter(character), referenceImageUrl: cloudUrl });
   } catch (err) { next(err); }
 });
 

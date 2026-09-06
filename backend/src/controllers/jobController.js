@@ -222,6 +222,36 @@ export async function getJobDetail(req, res, next) {
       if (env?.name) mergeDiskOntoPlanKey(jobObj.environmentLocks, env.name);
     }
 
+    // After merging disk stems onto plan/display names, drop orphan safeKey-only
+    // entries that duplicate the same image (e.g. keep "Obi", remove "obi").
+    const pruneOrphanSafeKeyLocks = (locks, planKeys) => {
+      const canonical = [...new Set((planKeys || []).filter(Boolean))];
+      for (const planKey of canonical) {
+        const sk = safeKey(planKey);
+        if (!sk || sk === planKey) continue;
+        if (!locks[sk] || !locks[planKey]) continue;
+        const orphanPath = locks[sk]?.referenceImagePath;
+        const planPath = locks[planKey]?.referenceImagePath;
+        const sameImage = Boolean(
+          orphanPath && planPath && orphanPath === planPath
+        );
+        // Plan key is canonical once it has (or shares) the disk image.
+        if (sameImage || planPath) {
+          delete locks[sk];
+        }
+      }
+    };
+    pruneOrphanSafeKeyLocks(
+      jobObj.characterLocks,
+      (jobObj.directorPlan?.characters || []).map((c) => c?.name),
+    );
+    const envPlanKeys = [];
+    for (const env of jobObj.directorPlan?.environments || []) {
+      if (env?.locationId) envPlanKeys.push(env.locationId);
+      if (env?.name) envPlanKeys.push(env.name);
+    }
+    pruneOrphanSafeKeyLocks(jobObj.environmentLocks, envPlanKeys);
+
     // Flag locks that have a readable reference image on disk for the FE.
     for (const [name, lock] of Object.entries(jobObj.characterLocks || {})) {
       const pathOnDisk = lock?.referenceImagePath;
