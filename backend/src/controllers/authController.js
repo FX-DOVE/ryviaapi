@@ -408,8 +408,9 @@ export async function forgotPassword(req, res, next) {
 
     const rawToken = crypto.randomBytes(32).toString('hex');
     const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const RESET_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
     user.resetPasswordToken = hashed;
-    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+    user.resetPasswordExpires = new Date(Date.now() + RESET_TTL_MS);
     await user.save();
 
     try {
@@ -418,7 +419,11 @@ export async function forgotPassword(req, res, next) {
       console.warn('[auth] reset email failed:', mailErr.message);
     }
 
-    res.json({ success: true, message: 'If that email is registered, a reset link has been sent.' });
+    const payload = { success: true, message: 'If that email is registered, a reset link has been sent.' };
+    if (process.env.NODE_ENV !== 'production' && !process.env.EMAIL_HOST) {
+      payload.devResetToken = rawToken;
+    }
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -434,15 +439,23 @@ export async function resetPassword(req, res, next) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    const hashed = crypto.createHash('sha256').update(String(token)).digest('hex');
-    const user = await User.findOne({
-      resetPasswordToken: hashed,
-      resetPasswordExpires: { $gt: new Date() },
-    });
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    const cleanToken = String(token).trim();
+    const hashed = crypto.createHash('sha256').update(cleanToken).digest('hex');
+
+    // Distinguish expired vs unknown so the UI can guide the user.
+    const byToken = await User.findOne({ resetPasswordToken: hashed });
+    if (!byToken) {
+      return res.status(400).json({
+        error: 'Invalid reset link. Request a new one — only the latest email link works.',
+      });
+    }
+    if (!byToken.resetPasswordExpires || byToken.resetPasswordExpires.getTime() <= Date.now()) {
+      return res.status(400).json({
+        error: 'This reset link has expired. Request a new one from the forgot password page.',
+      });
     }
 
+    const user = byToken;
     user.password = password;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;

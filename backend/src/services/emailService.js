@@ -3,7 +3,9 @@ import nodemailer from 'nodemailer';
 let transporter = null;
 
 function getAppUrl() {
-  return (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const raw = process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+  // FRONTEND_URL may be a comma-separated CORS list — use the first entry only.
+  return String(raw).split(',')[0].trim().replace(/\/+$/, '');
 }
 
 function getFrom() {
@@ -77,10 +79,10 @@ export function passwordResetTemplate({ name, resetUrl }) {
         <h1 style="font-size:22px">Password reset</h1>
         <p>Hi ${escapeHtml(display)}, we received a request to reset your password.</p>
         <p><a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">Reset password</a></p>
-        <p style="color:#666;font-size:13px">This link expires in 1 hour. If you did not request a reset, ignore this email.</p>
+        <p style="color:#666;font-size:13px">This link expires in 24 hours. If you request another reset, older links stop working. If you did not request a reset, ignore this email.</p>
       </div>
     `,
-    text: `Hi ${display}, reset your Reyvia password: ${resetUrl} (expires in 1 hour).`,
+    text: `Hi ${display}, reset your Reyvia password: ${resetUrl} (expires in 24 hours).`,
   };
 }
 
