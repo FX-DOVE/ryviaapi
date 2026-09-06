@@ -1,16 +1,46 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, Check, Eye, EyeOff } from 'lucide-react';
 import { AuthLayout } from '../components/ui/AuthLayout';
-import { AppInput } from '../components/ui/AppInput';
 import { AppButton } from '../components/ui/AppButton';
+
+function PasswordField({ id, label, value, onChange, show, onToggleShow }) {
+  return (
+    <div className="form-group">
+      <label htmlFor={id} className="form-label">{label}</label>
+      <div className="relative">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          required
+          minLength={6}
+          placeholder="••••••••"
+          autoComplete="new-password"
+          className="form-input pr-11"
+        />
+        <button
+          type="button"
+          onClick={onToggleShow}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-overlay)] transition-colors"
+          aria-label={show ? 'Hide password' : 'Show password'}
+        >
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const token = searchParams.get('token') || '';
+  const token = (searchParams.get('token') || '').trim();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,21 +94,21 @@ export default function ResetPassword() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <AppInput
+        <PasswordField
+          id="reset-password"
           label="New password"
-          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          required
-          placeholder="••••••••"
+          show={showPassword}
+          onToggleShow={() => setShowPassword((v) => !v)}
         />
-        <AppInput
+        <PasswordField
+          id="reset-confirm-password"
           label="Confirm password"
-          type="password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
-          required
-          placeholder="••••••••"
+          show={showConfirm}
+          onToggleShow={() => setShowConfirm((v) => !v)}
         />
         <AppButton type="submit" disabled={loading || !token} className="w-full">
           {loading ? 'Updating…' : 'Update password'}
