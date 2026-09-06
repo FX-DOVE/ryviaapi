@@ -4142,6 +4142,21 @@ input[type='file']::file-selector-button:hover {
   box-shadow: var(--shadow-md);
 }
 
+/* When the off-canvas drawer is open, keep floating chrome below the
+   sidebar/overlay so the wallet pill never paints through the drawer. */
+@media (max-width: 768px) {
+  .sidebar-overlay { z-index: 115; }
+  .sidebar { z-index: 120; }
+  .app-layout:has(.sidebar.open) .mobile-wallet-chip {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .app-layout:has(.sidebar.open) .sidebar-hamburger {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
 .wallet-hero {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -4876,7 +4891,8 @@ input[type='file']::file-selector-button:hover {
 }
 @media (max-width: 639px) {
   .admin-tabs .segmented-option {
-    padding: 8px 14px;
+    min-height: 44px;
+    padding: 10px 14px;
     font-size: 12px;
   }
   .admin-tab-label-full { display: none; }
@@ -5443,6 +5459,49 @@ input[type='file']::file-selector-button:hover {
 .admin-inline-action:hover { text-decoration: underline; }
 .admin-inline-action--danger { color: var(--text-muted); }
 .admin-inline-action--danger:hover { color: var(--accent-red); }
+
+/* Studio Ops role controls — real buttons with touch-friendly hit area */
+.admin-role-action {
+  white-space: nowrap;
+}
+.admin-role-action--danger {
+  color: var(--text-muted);
+  border-color: var(--border-default);
+}
+.admin-role-action--danger:hover {
+  color: var(--accent-red);
+  border-color: color-mix(in srgb, var(--accent-red) 35%, transparent);
+}
+.admin-stack-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-worker-gpu {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  line-height: 1.35;
+  max-width: 100%;
+}
+@media (max-width: 768px) {
+  .admin-role-action.btn-sm {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+  .admin-stack-actions .admin-role-action {
+    flex: 1 1 auto;
+  }
+  .sidebar-close {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  /* Key admin form submit buttons already use AppButton; bump compact ones */
+  .admin-page .btn-sm {
+    min-height: 44px;
+  }
+}
 .admin-live-dot {
   width: 6px;
   height: 6px;

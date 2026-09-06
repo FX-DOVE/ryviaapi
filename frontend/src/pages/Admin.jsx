@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -119,6 +119,7 @@ export default function Admin({ defaultTab = 'overview' }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const fetchInFlightRef = useRef(false);
 
   // AI Connections state
   const [aiProviders, setAiProviders] = useState([]);
@@ -143,9 +144,13 @@ export default function Admin({ defaultTab = 'overview' }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState(null);
 
-  const fetchRegistry = async (isFirstLoad = false) => {
+  const fetchRegistry = async ({ isFirstLoad = false, showRefreshing = false } = {}) => {
+    // Silent background polls must not disable the Refresh button.
+    // Skip overlapping polls (interval can fire while a request is in flight).
+    if (fetchInFlightRef.current && !isFirstLoad) return;
+    fetchInFlightRef.current = true;
     if (isFirstLoad) setLoading(true);
-    else setRefreshing(true);
+    if (showRefreshing) setRefreshing(true);
     const safeJson = async (res) => {
       if (!res || !res.ok) return null;
       try {
@@ -162,6 +167,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       if (!token) {
         setLoading(false);
         setRefreshing(false);
+        fetchInFlightRef.current = false;
         setError('Please log in as an administrator.');
         return;
       }
@@ -189,6 +195,7 @@ export default function Admin({ defaultTab = 'overview' }) {
         setError('Access denied. Administrator privileges required.');
         setLoading(false);
         setRefreshing(false);
+        fetchInFlightRef.current = false;
         return;
       }
 
@@ -233,13 +240,14 @@ export default function Admin({ defaultTab = 'overview' }) {
       setError(err?.message || 'Failed to load system metrics');
     } finally {
       if (isFirstLoad) setLoading(false);
-      setRefreshing(false);
+      if (showRefreshing) setRefreshing(false);
+      fetchInFlightRef.current = false;
     }
   };
 
   useEffect(() => {
-    fetchRegistry(true);
-    const interval = setInterval(() => fetchRegistry(false), 8000);
+    fetchRegistry({ isFirstLoad: true });
+    const interval = setInterval(() => fetchRegistry({}), 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -286,7 +294,7 @@ export default function Admin({ defaultTab = 'overview' }) {
 
       setPromoteMessage({ type: 'success', text: data.message });
       setPromoteEmail('');
-      await fetchRegistry(false);
+      await fetchRegistry({});
     } catch (err) {
       setPromoteMessage({ type: 'error', text: err.message });
     } finally {
@@ -310,7 +318,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       if (!response.ok) throw new Error(data.error || 'Failed to update user role');
 
       setPromoteMessage({ type: 'success', text: data.message });
-      await fetchRegistry(false);
+      await fetchRegistry({});
     } catch (err) {
       setPromoteMessage({ type: 'error', text: err.message });
     } finally {
@@ -340,7 +348,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       if (!res.ok) throw new Error(data.error || 'Failed to create coupon');
       setCouponMsg({ type: 'success', text: `Created coupon ${data.coupon?.code}` });
       setCouponForm({ code: '', fixedCreditUsd: '25', percentOff: '', maxRedemptions: '', expiresAt: '' });
-      await fetchRegistry(false);
+      await fetchRegistry({});
     } catch (err) {
       setCouponMsg({ type: 'error', text: err.message });
     } finally {
@@ -355,7 +363,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to disable coupon');
       setCouponMsg({ type: 'success', text: 'Coupon disabled' });
-      await fetchRegistry(false);
+      await fetchRegistry({});
     } catch (err) {
       setCouponMsg({ type: 'error', text: err.message });
     } finally {
@@ -378,7 +386,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Grant failed');
       setGrantMsg({ type: 'success', text: `Granted $${data.grantedUsd} to ${data.count} user(s)` });
-      await fetchRegistry(false);
+      await fetchRegistry({});
     } catch (err) {
       setGrantMsg({ type: 'error', text: err.message });
     } finally {
@@ -471,7 +479,7 @@ export default function Admin({ defaultTab = 'overview' }) {
             variant="secondary"
             size="sm"
             icon={RefreshCw}
-            onClick={() => fetchRegistry(false)}
+            onClick={() => fetchRegistry({ showRefreshing: true })}
             disabled={refreshing}
             className={refreshing ? 'opacity-80' : ''}
           >
@@ -573,7 +581,12 @@ export default function Admin({ defaultTab = 'overview' }) {
                               <span className="text-sm font-medium text-[var(--text-primary)] truncate">{w.workerId}</span>
                               <span className={workerChipClass(w.status)}>{w.status}</span>
                             </div>
-                            <div className="text-xs text-[var(--text-secondary)] truncate">{w.gpuModel}</div>
+                            <div
+                              className="text-xs text-[var(--text-secondary)] admin-worker-gpu"
+                              title={w.gpuModel || undefined}
+                            >
+                              {w.gpuModel}
+                            </div>
                           </div>
                         </div>
                         <div className="admin-worker-metrics">
@@ -1173,30 +1186,34 @@ export default function Admin({ defaultTab = 'overview' }) {
                             <div className="font-medium text-xs text-[var(--text-primary)] truncate">{u.name || 'User'}</div>
                             <div className="text-[10px] text-[var(--text-muted)] truncate">{u.email}</div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className={u.role === 'admin' ? 'admin-chip admin-chip--brand' : 'admin-chip admin-chip--muted'}>
-                              {u.role}
-                            </span>
-                            {u.role !== 'admin' ? (
-                              <button
-                                type="button"
-                                onClick={() => handlePromote(null, u.email)}
-                                disabled={promoting}
-                                className="admin-inline-action"
-                              >
-                                Make Admin
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleDemote(u.email)}
-                                disabled={promoting}
-                                className="admin-inline-action admin-inline-action--danger"
-                              >
-                                Revoke
-                              </button>
-                            )}
-                          </div>
+                          <span className={u.role === 'admin' ? 'admin-chip admin-chip--brand' : 'admin-chip admin-chip--muted'}>
+                            {u.role}
+                          </span>
+                        </div>
+                        <div className="admin-stack-actions">
+                          {u.role !== 'admin' ? (
+                            <AppButton
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handlePromote(null, u.email)}
+                              disabled={promoting}
+                              className="btn-inline admin-role-action"
+                            >
+                              Make Admin
+                            </AppButton>
+                          ) : (
+                            <AppButton
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDemote(u.email)}
+                              disabled={promoting}
+                              className="btn-inline admin-role-action admin-role-action--danger"
+                            >
+                              Revoke
+                            </AppButton>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1225,23 +1242,27 @@ export default function Admin({ defaultTab = 'overview' }) {
                             </td>
                             <td>
                               {u.role !== 'admin' ? (
-                                <button
+                                <AppButton
                                   type="button"
+                                  size="sm"
+                                  variant="secondary"
                                   onClick={() => handlePromote(null, u.email)}
                                   disabled={promoting}
-                                  className="admin-inline-action"
+                                  className="btn-inline admin-role-action"
                                 >
                                   Make Admin
-                                </button>
+                                </AppButton>
                               ) : (
-                                <button
+                                <AppButton
                                   type="button"
+                                  size="sm"
+                                  variant="ghost"
                                   onClick={() => handleDemote(u.email)}
                                   disabled={promoting}
-                                  className="admin-inline-action admin-inline-action--danger"
+                                  className="btn-inline admin-role-action admin-role-action--danger"
                                 >
                                   Revoke
-                                </button>
+                                </AppButton>
                               )}
                             </td>
                           </tr>
