@@ -1,12 +1,12 @@
 const STATUS_LABELS = {
-  queued:           'Queued',
+  queued:           'Draft',
   preparing:        'Preparing',
   analyzing:        'Analyzing',
   scene_generation: 'Building Scenes',
   media_generation: 'Generating Media',
   assembling:       'Assembling',
   optimizing:       'Optimizing',
-  completed:        'Completed',
+  completed:        'Complete',
   failed:           'Failed',
 };
 

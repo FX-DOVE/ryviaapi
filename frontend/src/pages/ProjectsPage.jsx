@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAppStore from '../store/useAppStore';
 import { listProjects, createProject, deleteProject } from '../api/projects';
@@ -9,9 +9,8 @@ import { AppButton } from '../components/ui/AppButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Modal } from '../components/ui/Modal';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Film, Plus, Trash2, Calendar } from 'lucide-react';
+import { Film, Plus, Trash2, Calendar, MoreVertical, FolderOpen, Lock, Clapperboard } from 'lucide-react';
 
-// Skeleton card matching the real project card layout
 function ProjectCardSkeleton() {
   return (
     <div className="project-card-skeleton">
@@ -25,8 +24,6 @@ function ProjectCardSkeleton() {
   );
 }
 
-// Each studio gets a stable accent for quick visual recognition in the grid.
-// Sourced from design tokens so the palette stays on-brand.
 const STUDIO_ACCENTS = [
   'var(--brand-primary)',
   'var(--accent-gold)',
@@ -35,13 +32,85 @@ const STUDIO_ACCENTS = [
   'var(--brand-light)',
 ];
 
+function formatEdited(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+function ProjectOverflow({ onOpen, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div className="project-card-overflow" ref={ref}>
+      <button
+        type="button"
+        className="p-2 rounded-xl bg-black/45 border border-[var(--glass-border)] text-[var(--text-secondary)] backdrop-blur-md hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-all"
+        aria-label="Project actions"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div className="project-overflow-menu" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onOpen();
+            }}
+          >
+            <FolderOpen size={14} /> Open studio
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="is-danger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onDelete(e);
+            }}
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectsPage() {
   const navigate = useNavigate();
   const { projects, setProjects, addProject, addToast } = useAppStore();
   const [loading, setLoading] = useState(true);
   const { confirm, confirmDialog } = useConfirm();
 
-  // Creation modal state
   const [showProjModal, setShowProjModal] = useState(false);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
@@ -84,7 +153,7 @@ export default function ProjectsPage() {
   };
 
   const handleDeleteProj = async (id, e) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
     const ok = await confirm({
       title: 'Delete project?',
       message: 'This permanently deletes the studio and its saved references. This cannot be undone.',
@@ -104,7 +173,7 @@ export default function ProjectsPage() {
     return (
       <AppPage className="projects-page">
         <PageHeader
-          title="Project Studios"
+          title="Projects"
           description="Manage your active cinematic productions."
           actions={
             <AppButton icon={Plus} onClick={() => setShowProjModal(true)}>
@@ -124,7 +193,7 @@ export default function ProjectsPage() {
   return (
     <AppPage className="projects-page">
       <PageHeader
-        title="Project Studios"
+        title="Projects"
         description="Manage your active cinematic productions. Each studio isolates its own character locks and environment references."
         actions={
           <AppButton icon={Plus} onClick={() => setShowProjModal(true)}>
@@ -136,8 +205,13 @@ export default function ProjectsPage() {
       {projects.length === 0 ? (
         <EmptyState
           icon={Film}
-          title="No projects started yet"
-          description="Create your first studio to begin writing scripts and generating cinematic video."
+          title="Start your first film"
+          description="Follow the Script → Lock → Render path to ship a finished cut from one studio."
+          checklist={[
+            { title: 'Script', description: 'Write or paste your story in Film Studio.' },
+            { title: 'Lock', description: 'Approve character looks and creative locks.' },
+            { title: 'Render', description: 'Produce and export a high-fidelity MP4.' },
+          ]}
           primaryAction={
             <AppButton icon={Plus} onClick={() => setShowProjModal(true)}>
               Create Studio
@@ -148,22 +222,21 @@ export default function ProjectsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {projects.map((p, i) => {
             const accent = STUDIO_ACCENTS[i % STUDIO_ACCENTS.length];
-            const dateObj = new Date(p.createdAt || Date.now());
+            const edited = p.updatedAt || p.createdAt;
+            const statusLabel = p.status === 'archived' ? 'Archived' : 'Active';
+            const statusColor = p.status === 'archived' ? 'var(--text-muted)' : 'var(--accent-green)';
 
             return (
               <div
                 key={p._id}
                 onClick={() => navigate(`/app/film-studio/${p._id}`)}
-                className="project-card group relative flex flex-col rounded-[var(--radius-xl)] bg-[var(--bg-surface)] border border-[var(--glass-border)] hover:border-[var(--border-default)] transition-all duration-300 cursor-pointer overflow-hidden hover:-translate-y-1 hover:shadow-[var(--shadow-lg)]"
+                className="project-card group relative flex flex-col rounded-[var(--radius-lg)] bg-[var(--bg-surface)] border border-[var(--border-default)] hover:border-[color-mix(in_srgb,var(--brand-primary)_40%,transparent)] transition-all duration-300 cursor-pointer overflow-hidden hover:-translate-y-1 hover:shadow-[var(--shadow-lg)]"
               >
-                {/* Thumbnail / accent area */}
-                <div className="relative w-full aspect-[16/9] bg-[var(--bg-sunken)] overflow-hidden border-b border-[var(--glass-border)]">
-                  {/* Accent glow */}
+                <div className="relative w-full aspect-[16/9] bg-[var(--bg-sunken)] overflow-hidden border-b border-[var(--border-subtle)]">
                   <div
                     className="absolute inset-0 opacity-20 transition-opacity duration-500 group-hover:opacity-40"
                     style={{ background: `radial-gradient(circle at 50% 50%, ${accent}, transparent 70%)` }}
                   />
-                  {/* Blueprint grid */}
                   <div
                     className="absolute inset-0 opacity-10"
                     style={{
@@ -185,25 +258,36 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
-                  {/* Bottom scrim */}
                   <div
                     className="absolute bottom-0 left-0 right-0 h-1/2"
                     style={{ background: 'linear-gradient(to top, var(--bg-surface), transparent)' }}
                   />
 
-                  {/* Delete (hover-reveal) */}
-                  <button
-                    onClick={(e) => handleDeleteProj(p._id, e)}
-                    className="absolute top-4 right-4 p-2 rounded-xl bg-black/40 border border-[var(--glass-border)] text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-all backdrop-blur-md hover:text-[var(--accent-red)] hover:border-[color-mix(in_srgb,var(--accent-red)_35%,transparent)] hover:bg-[color-mix(in_srgb,var(--accent-red)_15%,transparent)]"
-                    title="Delete project"
-                    aria-label={`Delete project ${p.name}`}
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="absolute top-3 left-3 flex items-center gap-2">
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border backdrop-blur-md"
+                      style={{
+                        color: statusColor,
+                        borderColor: `color-mix(in srgb, ${statusColor} 35%, transparent)`,
+                        background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
+                      }}
+                    >
+                      {statusLabel}
+                    </span>
+                    {p.creativeLock?.enabled && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border border-[var(--border-subtle)] bg-black/35 text-[var(--text-secondary)] backdrop-blur-md inline-flex items-center gap-1">
+                        <Lock size={10} /> Locked
+                      </span>
+                    )}
+                  </div>
+
+                  <ProjectOverflow
+                    onOpen={() => navigate(`/app/film-studio/${p._id}`)}
+                    onDelete={(e) => handleDeleteProj(p._id, e)}
+                  />
                 </div>
 
-                {/* Body */}
-                <div className="p-6 flex flex-col flex-1">
+                <div className="p-5 sm:p-6 flex flex-col flex-1">
                   <div className="flex items-start justify-between gap-4 mb-2">
                     <h3 className="text-lg font-bold text-[var(--text-primary)] line-clamp-1">{p.name}</h3>
                     <div
@@ -216,12 +300,12 @@ export default function ProjectsPage() {
                     {p.description || <span className="italic opacity-50">No description provided</span>}
                   </p>
 
-                  <div className="mt-auto pt-4 border-t border-[var(--glass-border)] flex items-center justify-between">
+                  <div className="mt-auto pt-4 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-widest text-[var(--text-muted)]">
-                      <Calendar size={12} /> {dateObj.toLocaleDateString()}
+                      <Calendar size={12} /> Edited {formatEdited(edited)}
                     </div>
 
-                    {p.style?.preset && (
+                    {p.style?.preset ? (
                       <div
                         className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border"
                         style={{
@@ -232,6 +316,10 @@ export default function ProjectsPage() {
                       >
                         {p.style.preset}
                       </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+                        <Clapperboard size={11} /> Studio
+                      </span>
                     )}
                   </div>
                 </div>
@@ -241,7 +329,6 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Create project */}
       <Modal
         open={showProjModal}
         onClose={() => setShowProjModal(false)}

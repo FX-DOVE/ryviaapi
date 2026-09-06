@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Film, Search, ArrowLeft, ArrowRight, Clapperboard } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Film, Search, ArrowLeft, ArrowRight, Clapperboard, LayoutGrid, List } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useAppStore from '../store/useAppStore';
 import { getHistory, deleteJob } from '../api/jobs';
@@ -11,9 +11,19 @@ import { AppButton } from '../components/ui/AppButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 
-const STATUS_FILTERS = ['all', 'queued', 'media_generation', 'completed', 'failed'];
+const FILTERS = [
+  { id: 'all', label: 'All', api: null },
+  { id: 'draft', label: 'Draft', api: 'queued' },
+  { id: 'rendering', label: 'Rendering', api: 'media_generation' },
+  { id: 'complete', label: 'Complete', api: 'completed' },
+  { id: 'failed', label: 'Failed', api: 'failed' },
+];
 
-// Skeleton card that mirrors the real JobCard layout
+const RENDERING_STATUSES = new Set([
+  'preparing', 'analyzing', 'scene_generation', 'media_generation',
+  'assembling', 'optimizing', 'directing', 'locking',
+]);
+
 function JobCardSkeleton() {
   return (
     <div className="job-card-skeleton">
@@ -30,31 +40,46 @@ function JobCardSkeleton() {
 export default function History() {
   const navigate = useNavigate();
   const { jobs, jobsTotal, setJobs, removeJob, addToast } = useAppStore();
-  const [filter,  setFilter]  = useState('all');
-  const [search,  setSearch]  = useState('');
-  const [page,    setPage]    = useState(1);
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasEverLoaded, setHasEverLoaded] = useState(false);
+  const [view, setView] = useState('grid');
   const { confirm, confirmDialog } = useConfirm();
 
-  const fetchJobs = async (p = 1, status = filter) => {
+  const activeFilter = FILTERS.find((f) => f.id === filter) || FILTERS[0];
+
+  const fetchJobs = async (p = 1, nextFilter = filter) => {
     setLoading(true);
     try {
+      const f = FILTERS.find((x) => x.id === nextFilter) || FILTERS[0];
       const params = { page: p, limit: 20 };
-      if (status !== 'all') params.status = status;
+      // Rendering spans multiple pipeline statuses — fetch a wider page and filter client-side.
+      if (f.id === 'rendering') {
+        params.limit = 40;
+      } else if (f.api) {
+        params.status = f.api;
+      }
       const { data } = await getHistory(params);
-      setJobs(data.jobs, data.total);
+      let nextJobs = data.jobs || [];
+      let total = data.total;
+      if (f.id === 'rendering') {
+        nextJobs = nextJobs.filter((j) => RENDERING_STATUSES.has(j.status));
+        total = nextJobs.length;
+      }
+      setJobs(nextJobs, total);
       setPage(p);
-    } catch { 
-      addToast('Failed to load history', 'error'); 
-    } finally { 
+    } catch {
+      addToast('Failed to load history', 'error');
+    } finally {
       setLoading(false);
       setHasEverLoaded(true);
     }
   };
 
-  useEffect(() => { 
-    fetchJobs(1, filter); 
+  useEffect(() => {
+    fetchJobs(1, filter);
   }, [filter]);
 
   const handleDelete = async (id) => {
@@ -73,32 +98,54 @@ export default function History() {
     }
   };
 
-  const filtered = search.trim()
-    ? jobs.filter((j) => j.title.toLowerCase().includes(search.toLowerCase()))
-    : jobs;
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter((j) => (j.title || '').toLowerCase().includes(q));
+  }, [jobs, search]);
 
-  // True first-run: no jobs at all, unfiltered
   const isFirstRun = hasEverLoaded && jobsTotal === 0 && filter === 'all' && !search.trim();
 
   return (
     <AppPage className="history-page">
-      <PageHeader 
+      <PageHeader
         title="History"
         description={`${jobsTotal} total video${jobsTotal !== 1 ? 's' : ''}`}
+        actions={
+          <div className="history-view-toggle" role="group" aria-label="View mode">
+            <button
+              type="button"
+              className={view === 'grid' ? 'active' : ''}
+              aria-pressed={view === 'grid'}
+              onClick={() => setView('grid')}
+              title="Grid view"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              type="button"
+              className={view === 'list' ? 'active' : ''}
+              aria-pressed={view === 'list'}
+              onClick={() => setView('list')}
+              title="List view"
+            >
+              <List size={16} />
+            </button>
+          </div>
+        }
       />
 
-      {/* Filters & Search */}
       <div className="history-controls">
         <div className="history-filters">
-          {STATUS_FILTERS.map((s) => (
+          {FILTERS.map((s) => (
             <AppButton
-              key={s}
-              variant={filter === s ? 'primary' : 'secondary'}
+              key={s.id}
+              variant={filter === s.id ? 'primary' : 'secondary'}
               size="sm"
-              onClick={() => setFilter(s)}
+              onClick={() => setFilter(s.id)}
               className="btn-inline"
             >
-              {s === 'all' ? 'All' : s.replace(/_/g, ' ')}
+              {s.label}
             </AppButton>
           ))}
         </div>
@@ -110,13 +157,13 @@ export default function History() {
             placeholder="Search titles..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search history"
           />
         </div>
       </div>
 
-      {/* Grid / Loading / Empty */}
       {loading ? (
-        <div className="history-grid">
+        <div className={view === 'list' ? 'history-grid history-grid--list' : 'history-grid'}>
           {Array.from({ length: 8 }).map((_, i) => (
             <JobCardSkeleton key={i} />
           ))}
@@ -126,6 +173,11 @@ export default function History() {
           icon={Clapperboard}
           title="Lights, Camera, Action!"
           description="You haven't produced any videos yet. Head to Film Studio to write a script and generate your first cinematic masterpiece."
+          checklist={[
+            { title: 'Script', description: 'Draft your story or paste a screenplay.' },
+            { title: 'Lock', description: 'Approve cast looks and creative locks.' },
+            { title: 'Render', description: 'Produce and track the job here.' },
+          ]}
           primaryAction={
             <AppButton icon={Clapperboard} onClick={() => navigate('/app/film-studio')}>
               Open Film Studio
@@ -133,38 +185,37 @@ export default function History() {
           }
         />
       ) : filtered.length === 0 ? (
-        <EmptyState 
+        <EmptyState
           icon={Film}
           title="No videos found"
-          description="Try a different filter or clear your search."
+          description={`Nothing matches “${activeFilter.label}”. Try another filter or clear your search.`}
         />
       ) : (
-        <div className="history-grid">
+        <div className={view === 'list' ? 'history-grid history-grid--list' : 'history-grid'}>
           {filtered.map((job) => (
             <JobCard key={job._id} job={job} onDelete={handleDelete} />
           ))}
         </div>
       )}
 
-      {/* Pagination */}
       {jobsTotal > 20 && (
         <div className="history-pagination">
-          <AppButton 
-            variant="secondary" 
-            disabled={page <= 1} 
+          <AppButton
+            variant="secondary"
+            disabled={page <= 1}
             onClick={() => fetchJobs(page - 1)}
             icon={ArrowLeft}
           >
             Previous
           </AppButton>
-          
+
           <span className="text-sm font-medium text-[var(--text-secondary)]">
             Page {page} of {Math.ceil(jobsTotal / 20)}
           </span>
-          
-          <AppButton 
-            variant="secondary" 
-            disabled={page >= Math.ceil(jobsTotal / 20)} 
+
+          <AppButton
+            variant="secondary"
+            disabled={page >= Math.ceil(jobsTotal / 20)}
             onClick={() => fetchJobs(page + 1)}
             icon={ArrowRight}
           >

@@ -76,7 +76,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
 
   // Settings navigation — Admin-only items conditionally included
   const settingsNav = [
-    { to: '/app/billing', icon: CreditCard, label: 'Billing' },
+    { to: '/app/billing', icon: CreditCard, label: 'Billing / Wallet' },
     ...(isAdmin ? [{ to: '/app/admin', icon: Shield, label: 'Admin Panel', badge: 'Admin' }] : []),
   ];
 
@@ -126,7 +126,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
       </div>
 
       <button className="sidebar-wallet" onClick={() => { navigate('/app/billing'); onClose?.(); }}>
-        <span>Wallet</span>
+        <span>Credits</span>
         <strong>{formatUsd(wallet?.balanceUsd || 0)}</strong>
       </button>
 
@@ -137,7 +137,7 @@ export default function Sidebar({ isOpen = false, onClose }) {
         </div>
 
         <div className="sidebar-nav-group">
-          <div className="nav-label">Settings</div>
+          <div className="nav-label">Account</div>
           <NavList items={settingsNav} />
         </div>
 

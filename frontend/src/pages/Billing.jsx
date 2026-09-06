@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -34,7 +34,7 @@ export default function Billing() {
     try {
       const [walletRes, ledgerRes] = await Promise.all([
         getWallet(),
-        getLedger({ limit: 20 }),
+        getLedger({ limit: 50 }),
       ]);
       setBalanceUsd(walletRes.data.balanceUsd || 0);
       setPackages(walletRes.data.packages || []);
@@ -79,6 +79,21 @@ export default function Billing() {
     return () => { cancelled = true; };
   }, [searchParams.get('reference')]);
 
+  const usage = useMemo(() => {
+    let deposited = 0;
+    let spent = 0;
+    for (const row of ledger) {
+      const amt = Number(row.amountUsd) || 0;
+      if (row.type === 'deduction') spent += amt;
+      else if (row.type === 'addition' || row.type === 'refund') deposited += amt;
+    }
+    const totalKnown = deposited + balanceUsd;
+    // Prefer deposited+balance as a soft ceiling; fall back to spent+available.
+    const ceiling = Math.max(totalKnown, spent + balanceUsd, 1);
+    const pct = Math.min(100, Math.round((spent / ceiling) * 100));
+    return { deposited, spent, available: balanceUsd, pct };
+  }, [ledger, balanceUsd]);
+
   const startPay = async ({ packageId, creditUsd }) => {
     setError('');
     setMessage('');
@@ -117,12 +132,24 @@ export default function Billing() {
 
   const customValue = Number(customCredit);
   const customCharge = Number.isFinite(customValue) ? customValue : 0;
+  const popularPackage = packages.find((p) => p.popular) || packages[0];
 
   return (
     <AppPage>
       <PageHeader
-        title="Studio wallet"
+        title="Billing / Wallet"
         description="Add funds to produce films. Unused balance stays on your account."
+        actions={
+          popularPackage ? (
+            <AppButton
+              icon={paying === popularPackage.id ? Loader2 : ArrowUpRight}
+              disabled={!!paying}
+              onClick={() => startPay({ packageId: popularPackage.id })}
+            >
+              {paying === popularPackage.id ? 'Redirecting…' : 'Deposit credits'}
+            </AppButton>
+          ) : null
+        }
       />
 
       {message && (
@@ -136,17 +163,52 @@ export default function Billing() {
 
       <AppCard className="wallet-hero">
         <div className="wallet-hero-main">
-          <div className="wallet-kicker">Available balance</div>
+          <div className="wallet-kicker">Available credits</div>
           <div className="wallet-balance">
             {loading ? '—' : formatUsd(balanceUsd)}
           </div>
           <p className="wallet-note">
-            Production is billed from this balance when a film finishes rendering.
+            Production is billed from this balance when a film finishes rendering. Deposits map 1:1 to studio credits.
           </p>
+
+          <div className="wallet-stats">
+            <div className="wallet-stat">
+              <span>Available</span>
+              <strong>{loading ? '—' : formatUsd(usage.available)}</strong>
+            </div>
+            <div className="wallet-stat">
+              <span>Used (recent)</span>
+              <strong>{loading ? '—' : formatUsd(usage.spent)}</strong>
+            </div>
+            <div className="wallet-stat">
+              <span>Deposited (recent)</span>
+              <strong>{loading ? '—' : formatUsd(usage.deposited)}</strong>
+            </div>
+          </div>
+
+          <div className="wallet-usage" aria-label="Credit usage">
+            <div className="wallet-usage-label">
+              <span>Usage of known credits</span>
+              <span>{usage.pct}%</span>
+            </div>
+            <div className="wallet-usage-track">
+              <div className="wallet-usage-fill" style={{ width: `${usage.pct}%` }} />
+            </div>
+          </div>
         </div>
         <div className="wallet-hero-side">
           <Wallet size={28} />
           <span>Pay as you produce</span>
+          {popularPackage && (
+            <AppButton
+              size="sm"
+              className="mt-2"
+              disabled={!!paying}
+              onClick={() => startPay({ packageId: popularPackage.id })}
+            >
+              Deposit
+            </AppButton>
+          )}
         </div>
       </AppCard>
 
@@ -176,15 +238,15 @@ export default function Billing() {
               className="w-full text-base"
               icon={paying === p.id ? Loader2 : ArrowUpRight}
             >
-              {paying === p.id ? 'Redirecting…' : 'Pay with Paystack'}
+              {paying === p.id ? 'Redirecting…' : 'Deposit with Paystack'}
             </AppButton>
           </AppCard>
         ))}
       </div>
 
       <AppCard className="custom-topup">
-        <h3 className="card-title mb-2">Custom amount</h3>
-        <p className="body-text text-sm mb-4">Enter how much to add to your studio wallet.</p>
+        <h3 className="card-title mb-2">Custom deposit</h3>
+        <p className="body-text text-sm mb-4">Enter how much to add to your studio wallet (1:1 USD → credits).</p>
         <div className="custom-topup-row">
           <AppInput
             label="Balance to add (USD)"
@@ -202,7 +264,7 @@ export default function Billing() {
             disabled={!!paying || !Number.isFinite(customValue) || customValue < 5}
             onClick={() => startPay({ creditUsd: customValue })}
           >
-            {paying === 'custom' ? 'Redirecting…' : 'Pay with Paystack'}
+            {paying === 'custom' ? 'Redirecting…' : 'Deposit with Paystack'}
           </AppButton>
         </div>
       </AppCard>
