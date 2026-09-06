@@ -199,7 +199,7 @@ function CharacterEditor({ character, onSave, onCancel }) {
   const [form, setForm] = useState(character || {
     name: '', role: 'supporting', gender: 'unspecified', physicalDescription: ''
   });
-  const [previewImage, setPreviewImage] = useState(character?.referenceImageUrl || character?.referenceImage || null);
+  const [previewImage, setPreviewImage] = useState(charImageUrl(character) || character?.referenceImage || null);
   const [imageFile, setImageFile] = useState(null);
 
   const set = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
