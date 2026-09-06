@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { AppPage } from '../components/ui/AppPage';
 import { PageHeader } from '../components/ui/PageHeader';
 import { AppButton } from '../components/ui/AppButton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Skeleton } from '../components/ui/Skeleton';
 import {
   Server, Activity, Layers, UserPlus, Lock, ArrowUpRight,
-  Cpu, Thermometer, MemoryStick, Clock, CreditCard,
-  Brain, Film, Image, Zap, Terminal, Key, Loader, XCircle, RefreshCw,
-  Mail, Ticket, Gift
+  Cpu, CreditCard,
+  Brain, Film, Image, RefreshCw,
+  Mail, Ticket, Gift, XCircle
 } from 'lucide-react';
 
 /**
@@ -58,7 +60,7 @@ function StatusIndicator({ connected, configured, testing }) {
   if (testing) {
     return (
       <div className="status-indicator status-indicator-testing">
-        <Loader size={12} className="animate-spin" />
+        <RefreshCw size={12} className="animate-spin" />
         <span>Testing</span>
       </div>
     );
@@ -87,6 +89,18 @@ function StatusIndicator({ connected, configured, testing }) {
   );
 }
 
+function workerChipClass(status) {
+  if (status === 'busy' || status === 'throttled') return 'admin-chip admin-chip--busy';
+  if (['online', 'ready'].includes(status)) return 'admin-chip admin-chip--ok';
+  return 'admin-chip admin-chip--muted';
+}
+
+function ledgerTypeChip(type) {
+  if (type === 'addition') return 'admin-chip admin-chip--ok';
+  if (type === 'refund') return 'admin-chip admin-chip--brand';
+  return 'admin-chip admin-chip--muted';
+}
+
 export default function Admin({ defaultTab = 'overview' }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(defaultTab);
@@ -104,6 +118,7 @@ export default function Admin({ defaultTab = 'overview' }) {
   const [stats, setStats] = useState({ activeUsers: 0, revenue: '$0', totalJobs: 0, failedJobs: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // AI Connections state
   const [aiProviders, setAiProviders] = useState([]);
@@ -130,6 +145,7 @@ export default function Admin({ defaultTab = 'overview' }) {
 
   const fetchRegistry = async (isFirstLoad = false) => {
     if (isFirstLoad) setLoading(true);
+    else setRefreshing(true);
     const safeJson = async (res) => {
       if (!res || !res.ok) return null;
       try {
@@ -145,6 +161,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       const token = localStorage.getItem('accessToken');
       if (!token) {
         setLoading(false);
+        setRefreshing(false);
         setError('Please log in as an administrator.');
         return;
       }
@@ -171,6 +188,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       if (user?.role !== 'admin' && user?.email !== 'odohchisom51@gmail.com') {
         setError('Access denied. Administrator privileges required.');
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -215,6 +233,7 @@ export default function Admin({ defaultTab = 'overview' }) {
       setError(err?.message || 'Failed to load system metrics');
     } finally {
       if (isFirstLoad) setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -388,32 +407,37 @@ export default function Admin({ defaultTab = 'overview' }) {
     }
   };
 
+  const activeCoupons = couponsList.filter((c) => c.active !== false);
+
   if (loading) {
     return (
-      <AppPage>
+      <AppPage className="admin-page">
         <PageHeader
           title="Admin Control Center"
           description="Global system metrics, worker instances, and AI provider status."
         />
-        <div className="flex border-b border-[var(--glass-border)] mb-8 gap-6 animate-pulse">
-          <div className="h-8 w-24 bg-[var(--bg-overlay)] rounded-t-lg"></div>
-          <div className="h-8 w-24 bg-[var(--bg-overlay)] rounded-t-lg"></div>
-          <div className="h-8 w-24 bg-[var(--bg-overlay)] rounded-t-lg"></div>
+        <div className="admin-tabs segmented" aria-hidden="true">
+          <Skeleton height={36} width={96} className="rounded-[var(--radius-sm)]" />
+          <Skeleton height={36} width={110} className="rounded-[var(--radius-sm)]" />
+          <Skeleton height={36} width={110} className="rounded-[var(--radius-sm)]" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] p-6 h-32 animate-pulse">
-              <div className="h-4 w-1/3 bg-[var(--bg-overlay)] rounded mb-4"></div>
-              <div className="h-8 w-1/2 bg-[var(--bg-overlay)] rounded"></div>
+        <div className="admin-skeleton-grid">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="admin-skeleton-card">
+              <Skeleton variant="text" height={12} width="40%" />
+              <Skeleton variant="text" height={28} width="55%" />
+              <Skeleton variant="text" height={10} width="30%" />
             </div>
           ))}
         </div>
-        <div className="bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] p-6 h-64 animate-pulse">
-          <div className="h-6 w-1/4 bg-[var(--bg-overlay)] rounded mb-6"></div>
-          <div className="space-y-4">
-            <div className="h-4 w-full bg-[var(--bg-overlay)] rounded"></div>
-            <div className="h-4 w-5/6 bg-[var(--bg-overlay)] rounded"></div>
-            <div className="h-4 w-4/6 bg-[var(--bg-overlay)] rounded"></div>
+        <div className="admin-panel">
+          <div className="admin-panel-header">
+            <Skeleton variant="text" height={16} width={160} />
+          </div>
+          <div className="admin-panel-body" style={{ gap: 12 }}>
+            <Skeleton height={64} className="rounded-[var(--radius-md)]" />
+            <Skeleton height={64} className="rounded-[var(--radius-md)]" />
+            <Skeleton height={64} className="rounded-[var(--radius-md)]" />
           </div>
         </div>
       </AppPage>
@@ -422,10 +446,10 @@ export default function Admin({ defaultTab = 'overview' }) {
 
   if (error) {
     return (
-      <AppPage className="flex items-center justify-center min-h-[80vh]">
-        <div className="w-full max-w-md p-8 bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-xl)] shadow-[var(--shadow-lg)] flex flex-col items-center text-center">
-          <div className="w-12 h-12 rounded-full bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] flex items-center justify-center mb-4">
-            <Lock className="w-5 h-5 text-[var(--accent-red)]" />
+      <AppPage className="admin-page flex items-center justify-center min-h-[70vh]">
+        <div className="admin-error-card">
+          <div className="admin-error-icon" aria-hidden="true">
+            <Lock size={20} />
           </div>
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Access Restricted</h2>
           <p className="text-[var(--text-secondary)] text-sm mb-6 leading-relaxed">{error}</p>
@@ -438,13 +462,25 @@ export default function Admin({ defaultTab = 'overview' }) {
   }
 
   return (
-    <AppPage>
+    <AppPage className="admin-page">
       <PageHeader
         title="Command Center"
         description="Monitor GPU fleet, process queues, and system configuration."
+        actions={
+          <AppButton
+            variant="secondary"
+            size="sm"
+            icon={RefreshCw}
+            onClick={() => fetchRegistry(false)}
+            disabled={refreshing}
+            className={refreshing ? 'opacity-80' : ''}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </AppButton>
+        }
       />
 
-      <div className="admin-tabs segmented mb-6 w-full min-w-0 -mx-0 overflow-x-auto" role="tablist" aria-label="Admin sections">
+      <div className="admin-tabs segmented" role="tablist" aria-label="Admin sections">
         <button
           type="button"
           role="tab"
@@ -461,7 +497,8 @@ export default function Admin({ defaultTab = 'overview' }) {
           aria-pressed={activeTab === 'ai-connections'}
           onClick={() => setActiveTab('ai-connections')}
         >
-          AI
+          <span className="admin-tab-label-short">AI</span>
+          <span className="admin-tab-label-full">AI Connections</span>
         </button>
         <button
           type="button"
@@ -476,118 +513,87 @@ export default function Admin({ defaultTab = 'overview' }) {
 
       {activeTab === 'overview' && (
         <div className="flex flex-col gap-6">
-
-          {/* ROW 1: 4 KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-
-            <div className="flex flex-col p-5 bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] hover:border-[var(--border-default)] transition-colors h-full">
-              <div className="text-[var(--text-secondary)] text-xs font-medium mb-3 flex items-center gap-2">
-                <Activity size={14} /> SaaS Users
-              </div>
-              <div className="text-3xl font-semibold text-[var(--text-primary)] mb-2">{stats.activeUsers}</div>
-              <div className="text-xs text-[var(--text-secondary)] flex items-center gap-1 mt-auto">
-                <span className="text-[var(--accent-green)] flex items-center"><ArrowUpRight size={12}/> Active</span> accounts
+          <div className="admin-stats-grid">
+            <div className="admin-stat-card">
+              <div className="admin-stat-label"><Activity size={14} /> SaaS Users</div>
+              <div className="admin-stat-value">{stats.activeUsers}</div>
+              <div className="admin-stat-meta admin-stat-meta--ok">
+                <ArrowUpRight size={12} /> Active accounts
               </div>
             </div>
-
-            <div className="flex flex-col p-5 bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] hover:border-[var(--border-default)] transition-colors h-full">
-              <div className="text-[var(--text-secondary)] text-xs font-medium mb-3 flex items-center gap-2">
-                <CreditCard size={14} /> MRR Revenue
-              </div>
-              <div className="text-3xl font-semibold text-[var(--text-primary)] mb-2">{stats.revenue}</div>
-              <div className="text-xs text-[var(--text-secondary)] flex items-center gap-1 mt-auto">
-                <span className="text-[var(--accent-green)] flex items-center"><ArrowUpRight size={12}/> Active</span> subscriptions
+            <div className="admin-stat-card">
+              <div className="admin-stat-label"><CreditCard size={14} /> MRR Revenue</div>
+              <div className="admin-stat-value">{stats.revenue}</div>
+              <div className="admin-stat-meta admin-stat-meta--ok">
+                <ArrowUpRight size={12} /> Active subscriptions
               </div>
             </div>
-
-            <div className="flex flex-col p-5 bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] hover:border-[var(--border-default)] transition-colors h-full">
-              <div className="text-[var(--text-secondary)] text-xs font-medium mb-3 flex items-center gap-2">
-                <Film size={14} /> Total Productions
-              </div>
-              <div className="text-3xl font-semibold text-[var(--text-primary)] mb-2">{stats.totalJobs}</div>
-              <div className="text-xs text-[var(--text-secondary)] mt-auto">Cumulative pipelines run</div>
+            <div className="admin-stat-card">
+              <div className="admin-stat-label"><Film size={14} /> Total Productions</div>
+              <div className="admin-stat-value">{stats.totalJobs}</div>
+              <div className="admin-stat-meta">Cumulative pipelines run</div>
             </div>
-
-            <div className="flex flex-col p-5 bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] hover:border-[var(--border-default)] transition-colors h-full">
-              <div className="text-[var(--text-secondary)] text-xs font-medium mb-3 flex items-center gap-2">
-                <XCircle size={14} /> Failed Jobs (24h)
-              </div>
-              <div className="text-3xl font-semibold text-[var(--text-primary)] mb-2">{stats.failedJobs}</div>
-              <div className="text-xs text-[var(--accent-red)] mt-auto">Error rate in past 24h</div>
+            <div className="admin-stat-card">
+              <div className="admin-stat-label"><XCircle size={14} /> Failed Jobs (24h)</div>
+              <div className="admin-stat-value">{stats.failedJobs}</div>
+              <div className="admin-stat-meta admin-stat-meta--bad">Error rate in past 24h</div>
             </div>
-
           </div>
 
-          {/* ROW 2: 70/30 GPU Fleet & Queue */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-            {/* GPU Cluster Fleet (70%) */}
-            <div className="lg:col-span-8 flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden h-full">
-              <div className="px-5 py-4 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--bg-raised)]">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                  <Server size={14} className="text-[var(--text-secondary)]" />
+          <div className="admin-overview-grid">
+            <div className="admin-panel">
+              <div className="admin-panel-header">
+                <h2 className="admin-panel-title">
+                  <Server size={14} />
                   GPU Cluster Fleet
                 </h2>
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent-green)] animate-pulse" />
-                  <span className="text-[10px] font-medium text-[var(--accent-green)]">Live Sync</span>
-                </div>
+                <span className="admin-chip admin-chip--live">
+                  <span className="admin-live-dot" aria-hidden="true" />
+                  Live Sync
+                </span>
               </div>
-
-              <div className="p-5 flex-1 flex flex-col">
+              <div className="admin-panel-body">
                 {workers.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-[var(--text-secondary)]">
-                    <Server className="w-8 h-8 mb-3 opacity-20" />
-                    <p className="text-sm font-medium text-[var(--text-primary)] mb-1">No workers online</p>
-                    <p className="text-xs">Ensure compute nodes are connected to the Redis pool.</p>
-                  </div>
+                  <EmptyState
+                    icon={Server}
+                    title="No workers online"
+                    description="Ensure compute nodes are connected to the Redis pool."
+                    className="!py-10 !px-4"
+                  />
                 ) : (
-                  <div className="grid gap-3">
+                  <div className="admin-worker-list">
                     {workers.map((w, idx) => (
-                      <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-[var(--bg-sunken)] border border-[var(--glass-border)] rounded-[var(--radius-md)] gap-4">
-
-                        <div className="flex items-center gap-4">
-                          <div className="w-8 h-8 rounded-md bg-[var(--bg-raised)] border border-[var(--glass-border)] flex items-center justify-center">
-                            <Cpu size={14} className="text-[var(--text-primary)]" />
+                      <div key={idx} className="admin-worker-row">
+                        <div className="admin-worker-identity">
+                          <div className="admin-worker-icon" aria-hidden="true">
+                            <Cpu size={14} />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="text-sm font-medium text-[var(--text-primary)]">{w.workerId}</span>
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border uppercase ${
-                                w.status === 'busy'
-                                  ? 'bg-[color-mix(in_srgb,var(--accent-gold)_12%,transparent)] text-[var(--accent-gold)] border-[color-mix(in_srgb,var(--accent-gold)_26%,transparent)]' :
-                                ['online', 'ready'].includes(w.status)
-                                  ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] text-[var(--accent-green)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]' :
-                                w.status === 'throttled'
-                                  ? 'bg-[color-mix(in_srgb,var(--accent-gold)_12%,transparent)] text-[var(--accent-gold)] border-[color-mix(in_srgb,var(--accent-gold)_26%,transparent)]' :
-                                  'bg-[var(--bg-overlay)] text-[var(--text-muted)] border-[var(--glass-border)]'
-                              }`}>
-                                {w.status}
-                              </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <span className="text-sm font-medium text-[var(--text-primary)] truncate">{w.workerId}</span>
+                              <span className={workerChipClass(w.status)}>{w.status}</span>
                             </div>
-                            <div className="text-xs text-[var(--text-secondary)]">{w.gpuModel}</div>
+                            <div className="text-xs text-[var(--text-secondary)] truncate">{w.gpuModel}</div>
                           </div>
                         </div>
-
-                        <div className="flex gap-6 sm:justify-end flex-wrap sm:flex-nowrap">
-                          <div className="text-left sm:text-right">
-                            <div className="text-[10px] text-[var(--text-secondary)] mb-1">
-                              {w.workerId.includes('vps') ? 'CPU Load' : 'GPU Load'}
+                        <div className="admin-worker-metrics">
+                          <div className="admin-metric">
+                            <div className="admin-metric-label">
+                              {String(w.workerId || '').includes('vps') ? 'CPU Load' : 'GPU Load'}
                             </div>
-                            <div className="text-sm font-mono text-[var(--text-primary)]">{w.metrics?.gpuUtilization || 0}%</div>
+                            <div className="admin-metric-value">{w.metrics?.gpuUtilization || 0}%</div>
                           </div>
-                          <div className="text-left sm:text-right">
-                            <div className="text-[10px] text-[var(--text-secondary)] mb-1">Temp</div>
-                            <div className="text-sm font-mono text-[var(--text-primary)]">{w.metrics?.temperature || 0}°C</div>
+                          <div className="admin-metric">
+                            <div className="admin-metric-label">Temp</div>
+                            <div className="admin-metric-value">{w.metrics?.temperature || 0}°C</div>
                           </div>
-                          <div className="text-left sm:text-right">
-                            <div className="text-[10px] text-[var(--text-secondary)] mb-1">
-                              {w.workerId.includes('vps') ? 'RAM Used' : 'VRAM Used'}
+                          <div className="admin-metric">
+                            <div className="admin-metric-label">
+                              {String(w.workerId || '').includes('vps') ? 'RAM Used' : 'VRAM Used'}
                             </div>
-                            <div className="text-sm font-mono text-[var(--text-primary)]">{((w.metrics?.memoryUsed || 0) / 1024).toFixed(1)}GB</div>
+                            <div className="admin-metric-value">{((w.metrics?.memoryUsed || 0) / 1024).toFixed(1)}GB</div>
                           </div>
                         </div>
-
                       </div>
                     ))}
                   </div>
@@ -595,31 +601,25 @@ export default function Admin({ defaultTab = 'overview' }) {
               </div>
             </div>
 
-            {/* Queue Backlog (30%) */}
-            <div className="lg:col-span-4 flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden h-full">
-              <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)] flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                  <Layers size={14} className="text-[var(--text-secondary)]" />
+            <div className="admin-panel">
+              <div className="admin-panel-header">
+                <h2 className="admin-panel-title">
+                  <Layers size={14} />
                   Queue Backlog
                 </h2>
                 <span className="text-xs font-mono text-[var(--text-muted)]">
                   {queueMetrics.total ?? 0} total
                 </span>
               </div>
-
-              <div className="p-0 flex-1">
-                <ul className="divide-y divide-[var(--glass-border)]">
+              <div className="admin-panel-body admin-panel-body--flush">
+                <ul className="admin-queue-list">
                   {/* `total` arrives inside backlog and is shown in the header, not as a queue. */}
                   {Object.entries(queueMetrics).filter(([name]) => name !== 'total').map(([queueName, count]) => (
-                    <li key={queueName} className="flex justify-between items-center px-5 py-3.5 hover:bg-[var(--bg-raised)] transition-colors">
-                      <span className="text-sm text-[var(--text-secondary)] capitalize">
+                    <li key={queueName}>
+                      <span className="admin-queue-name">
                         {queueName.replace('Queue', ' process')}
                       </span>
-                      <span className={`text-xs font-mono px-2 py-0.5 rounded-md border ${
-                        count > 0
-                          ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]'
-                          : 'bg-transparent text-[var(--text-muted)] border-transparent'
-                      }`}>
+                      <span className={`admin-queue-count ${count > 0 ? 'admin-queue-count--hot' : ''}`}>
                         {count}
                       </span>
                     </li>
@@ -629,73 +629,64 @@ export default function Admin({ defaultTab = 'overview' }) {
             </div>
           </div>
 
-          {/* ROW 3: Credit Ledger — stacked cards on mobile, table from md+ */}
-          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <CreditCard size={14} className="text-[var(--text-secondary)]" />
+          <div className="admin-panel">
+            <div className="admin-panel-header">
+              <h2 className="admin-panel-title">
+                <CreditCard size={14} />
                 Credit Ledger
               </h2>
             </div>
 
-            {/* Mobile stacked cards */}
-            <div className="md:hidden divide-y divide-[var(--glass-border)]">
+            <div className="admin-mobile-only">
               {ledgerLogs.length === 0 ? (
-                <div className="px-5 py-12 text-center text-[var(--text-muted)] text-sm">
-                  No ledger transactions recorded.
-                </div>
+                <div className="admin-empty-inline">No ledger transactions recorded.</div>
               ) : (
-                ledgerLogs.map((log) => {
-                  const isPositive = ['addition', 'refund'].includes(log.type);
-                  const date = new Date(log.createdAt);
-                  return (
-                    <div key={log._id} className="px-5 py-4 flex flex-col gap-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-xs text-[var(--text-muted)]">
-                            {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className="admin-stack-list">
+                  {ledgerLogs.map((log) => {
+                    const isPositive = ['addition', 'refund'].includes(log.type);
+                    const date = new Date(log.createdAt);
+                    return (
+                      <div key={log._id} className="admin-stack-item">
+                        <div className="admin-stack-row">
+                          <div className="min-w-0">
+                            <div className="text-xs text-[var(--text-muted)]">
+                              {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            <div className="text-sm text-[var(--text-primary)] truncate mt-0.5">{log.userId?.name || 'System'}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] truncate">{log.userId?.email || 'automated'}</div>
                           </div>
-                          <div className="text-sm text-[var(--text-primary)] truncate mt-0.5">{log.userId?.name || 'System'}</div>
-                          <div className="text-[10px] text-[var(--text-muted)] truncate">{log.userId?.email || 'automated'}</div>
+                          <div className={`text-sm font-mono shrink-0 ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
+                            {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
+                          </div>
                         </div>
-                        <div className={`text-sm font-mono shrink-0 ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
-                          {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`${ledgerTypeChip(log.type)} capitalize`}>{log.type}</span>
+                          {log.reason && (
+                            <span className="text-xs text-[var(--text-secondary)] break-words">{log.reason}</span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${
-                          log.type === 'addition' ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] text-[var(--accent-green)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]' :
-                          log.type === 'refund' ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]' :
-                          'bg-[var(--bg-overlay)] text-[var(--text-secondary)] border-[var(--glass-border)]'
-                        }`}>
-                          {log.type}
-                        </span>
-                        {log.reason && (
-                          <span className="text-xs text-[var(--text-secondary)] break-words">{log.reason}</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            {/* Desktop table */}
-            <div className="hidden md:block overflow-x-auto flex-1">
-              <table className="w-full text-left text-sm whitespace-nowrap">
+            <div className="admin-desktop-only admin-table-wrap">
+              <table className="admin-table">
                 <thead>
-                  <tr className="border-b border-[var(--glass-border)] text-[var(--text-secondary)]">
-                    <th className="px-5 py-3 font-medium">Timestamp</th>
-                    <th className="px-5 py-3 font-medium">User</th>
-                    <th className="px-5 py-3 font-medium">Action</th>
-                    <th className="px-5 py-3 font-medium">Amount</th>
-                    <th className="px-5 py-3 font-medium w-full">Note</th>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Amount</th>
+                    <th className="w-full">Note</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[var(--glass-border)]">
+                <tbody>
                   {ledgerLogs.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="px-5 py-12 text-center text-[var(--text-muted)]">
+                      <td colSpan="5" className="admin-empty-inline">
                         No ledger transactions recorded.
                       </td>
                     </tr>
@@ -703,29 +694,22 @@ export default function Admin({ defaultTab = 'overview' }) {
                     ledgerLogs.map((log) => {
                       const isPositive = ['addition', 'refund'].includes(log.type);
                       const date = new Date(log.createdAt);
-
                       return (
-                        <tr key={log._id} className="hover:bg-[var(--bg-raised)] transition-colors">
-                          <td className="px-5 py-3 text-xs text-[var(--text-muted)]">
-                            {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' })}
+                        <tr key={log._id}>
+                          <td className="text-xs text-[var(--text-muted)]">
+                            {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </td>
-                          <td className="px-5 py-3">
+                          <td>
                             <div className="text-[var(--text-primary)] text-xs">{log.userId?.name || 'System'}</div>
                             <div className="text-[10px] text-[var(--text-muted)]">{log.userId?.email || 'automated'}</div>
                           </td>
-                          <td className="px-5 py-3">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${
-                              log.type === 'addition' ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] text-[var(--accent-green)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)]' :
-                              log.type === 'refund' ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]' :
-                              'bg-[var(--bg-overlay)] text-[var(--text-secondary)] border-[var(--glass-border)]'
-                            }`}>
-                              {log.type}
-                            </span>
+                          <td>
+                            <span className={`${ledgerTypeChip(log.type)} capitalize`}>{log.type}</span>
                           </td>
-                          <td className={`px-5 py-3 text-xs font-mono ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
+                          <td className={`text-xs font-mono ${isPositive ? 'text-[var(--accent-green)]' : 'text-[var(--text-secondary)]'}`}>
                             {isPositive ? '+' : '-'}${((log.credits || 0) / 100).toFixed(2)}
                           </td>
-                          <td className="px-5 py-3 text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
+                          <td className="text-xs text-[var(--text-secondary)] truncate max-w-[200px]">
                             {log.reason}
                           </td>
                         </tr>
@@ -736,116 +720,119 @@ export default function Admin({ defaultTab = 'overview' }) {
               </table>
             </div>
           </div>
-
         </div>
       )}
 
       {activeTab === 'ai-connections' && (
-        <div className="flex flex-col gap-6">
-
-          <div className="flex justify-end mb-2">
-            <AppButton variant="secondary" size="sm" icon={RefreshCw} onClick={handleTestAll} className="w-full sm:w-auto">
-              Ping All Endpoints
+        <div className="flex flex-col gap-4">
+          <div className="admin-provider-actions">
+            <AppButton
+              variant="secondary"
+              size="sm"
+              icon={RefreshCw}
+              onClick={handleTestAll}
+              disabled={!!testingType}
+              className="w-full sm:w-auto"
+            >
+              {testingType ? 'Pinging…' : 'Ping All Endpoints'}
             </AppButton>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="admin-provider-grid">
             {['reasoning', 'video', 'image'].map((type) => {
               const meta = PROVIDER_META[type];
               const Icon = meta.icon;
               const provider = aiProviders.find(p => p.type === type) || {};
               const result = testResults[type];
               const testing = testingType === type;
-
               const isConfigured = provider.configured;
               const isConnected = result?.connected ?? null;
 
               return (
-                <div key={type} className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden h-full transition-colors hover:border-[var(--border-default)]">
-
-                  <div className="p-6 border-b border-[var(--glass-border)] bg-[var(--bg-raised)] flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-[var(--bg-overlay)] border border-[var(--glass-border)] flex items-center justify-center shrink-0">
-                      <Icon size={18} className="text-[var(--text-secondary)]" />
+                <div key={type} className="admin-provider-card">
+                  <div className="admin-provider-head">
+                    <div className="admin-provider-icon" aria-hidden="true">
+                      <Icon size={18} />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">{meta.label}</h3>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">{meta.label}</h3>
+                        <StatusIndicator connected={isConnected} configured={isConfigured} testing={testing} />
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)]">{meta.subTitle}</p>
+                      <p className="text-xs text-[var(--text-secondary)] truncate">{meta.subTitle}</p>
                     </div>
                   </div>
 
-                  <div className="p-6 flex flex-col flex-1">
-                    <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">
-                      {meta.desc}
-                    </p>
+                  <div className="admin-provider-body">
+                    <p className="admin-provider-desc">{meta.desc}</p>
 
-                    <div className="flex flex-col mt-auto">
-                      <div className="border-b border-[var(--glass-border)] py-3">
-                        <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Active Model</span>
-                        <span className="text-sm text-[var(--text-primary)] font-mono">{provider.model || <span className="text-[var(--text-muted)] italic">Inherited</span>}</span>
-                      </div>
-
-                      <div className="border-b border-[var(--glass-border)] py-3">
-                        <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Endpoint</span>
-                        <span className="text-sm text-[var(--text-primary)] font-mono break-all block">
-                          {shortEndpoint(provider.endpoint) || <span className="text-[var(--text-muted)] italic">Not configured</span>}
-                        </span>
-                      </div>
-
-                      {/* Qwen answers on two endpoints; continuity depends on the edit one. */}
-                      {provider.editEndpoint && (
-                        <div className="border-b border-[var(--glass-border)] py-3">
-                          <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Edit Endpoint</span>
-                          <span className="text-sm text-[var(--text-primary)] font-mono break-all block">
-                            {shortEndpoint(provider.editEndpoint)}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* The reasoning role falls back across transports, in this order. */}
-                      {provider.fallbacks?.length > 0 && (
-                        <div className="border-b border-[var(--glass-border)] py-3">
-                          <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">Fallback Chain</span>
-                          <span className="text-xs text-[var(--text-secondary)] font-mono block leading-relaxed">
-                            {provider.fallbacks.join(' → ')}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="py-3">
-                        <span className="text-[10px] text-[var(--text-muted)] uppercase block mb-1">.env Keys</span>
-                        <span className="text-xs text-[var(--text-muted)] font-mono block leading-relaxed break-all">
-                          {meta.envKeys.join(', ')}
-                        </span>
-                      </div>
-
-                      <div className="pt-4 border-t border-[var(--glass-border)] flex items-center justify-between">
-                        <StatusIndicator connected={isConnected} configured={isConfigured} testing={testing} />
-                        <AppButton
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleTestProvider(type)}
-                          disabled={testing || !isConfigured}
-                        >
-                          Ping API
-                        </AppButton>
-                      </div>
-
-                      {/* Worker readiness from /health. `throttled` means the GPU tier has no
-                          capacity in the region, which looks identical to a hang otherwise. */}
-                      {result?.note && (
-                        <div className="mt-2 p-3 rounded-[var(--radius-md)] bg-[var(--bg-raised)] border border-[var(--glass-border)] text-xs text-[var(--text-secondary)] font-mono">
-                          {result.note}
-                        </div>
-                      )}
-
-                      {result?.error && (
-                        <div className="mt-2 p-3 rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-xs text-[var(--accent-red)]">
-                          {result.error}
-                        </div>
-                      )}
+                    <div className="admin-kv">
+                      <span className="admin-kv-label">Active Model</span>
+                      <span className="admin-kv-value">
+                        {provider.model || <span className="text-[var(--text-muted)] italic">Inherited</span>}
+                      </span>
                     </div>
+
+                    <div className="admin-kv">
+                      <span className="admin-kv-label">Endpoint</span>
+                      <span className="admin-kv-value">
+                        {shortEndpoint(provider.endpoint) || <span className="text-[var(--text-muted)] italic">Not configured</span>}
+                      </span>
+                    </div>
+
+                    {/* Qwen answers on two endpoints; continuity depends on the edit one. */}
+                    {provider.editEndpoint && (
+                      <div className="admin-kv">
+                        <span className="admin-kv-label">Edit Endpoint</span>
+                        <span className="admin-kv-value">{shortEndpoint(provider.editEndpoint)}</span>
+                      </div>
+                    )}
+
+                    {/* The reasoning role falls back across transports, in this order. */}
+                    {provider.fallbacks?.length > 0 && (
+                      <div className="admin-kv">
+                        <span className="admin-kv-label">Fallback Chain</span>
+                        <span className="admin-kv-value" style={{ fontSize: 11 }}>
+                          {provider.fallbacks.join(' → ')}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="admin-kv">
+                      <span className="admin-kv-label">.env Keys</span>
+                      <div className="admin-env-chips">
+                        {meta.envKeys.map((key) => (
+                          <span key={key} className="admin-env-chip">{key}</span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="admin-provider-footer">
+                      <StatusIndicator connected={isConnected} configured={isConfigured} testing={testing} />
+                      <AppButton
+                        variant={testing ? 'secondary' : 'ghost'}
+                        size="sm"
+                        icon={testing ? RefreshCw : undefined}
+                        onClick={() => handleTestProvider(type)}
+                        disabled={testing || !isConfigured}
+                      >
+                        {testing ? 'Testing…' : 'Ping API'}
+                      </AppButton>
+                    </div>
+
+                    {/* Worker readiness from /health. `throttled` means the GPU tier has no
+                        capacity in the region, which looks identical to a hang otherwise. */}
+                    {result?.note && (
+                      <div className="mt-3 p-3 rounded-[var(--radius-md)] bg-[var(--bg-raised)] border border-[var(--glass-border)] text-xs text-[var(--text-secondary)] font-mono">
+                        {result.note}
+                      </div>
+                    )}
+
+                    {result?.error && (
+                      <div className="mt-3 p-3 rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-xs text-[var(--accent-red)]">
+                        {result.error}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -854,20 +841,17 @@ export default function Admin({ defaultTab = 'overview' }) {
         </div>
       )}
 
-
       {activeTab === 'studio-ops' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-          {/* Coupons */}
-          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <Ticket size={14} className="text-[var(--text-secondary)]" />
+        <div className="admin-ops-grid">
+          <div className="admin-panel">
+            <div className="admin-panel-header">
+              <h2 className="admin-panel-title">
+                <Ticket size={14} />
                 Coupons
               </h2>
             </div>
-            <div className="p-5 flex flex-col flex-1 gap-4">
-              <form onSubmit={handleCreateCoupon} className="flex flex-col gap-3">
+            <div className="admin-panel-body">
+              <form onSubmit={handleCreateCoupon} className="admin-form">
                 <div>
                   <label htmlFor="coupon-code" className="form-label text-xs">Code</label>
                   <input
@@ -936,61 +920,104 @@ export default function Admin({ defaultTab = 'overview' }) {
               </form>
 
               {couponMsg && (
-                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
-                  couponMsg.type === 'success'
-                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
-                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
-                }`}>
+                <div className={`admin-msg mt-3 ${couponMsg.type === 'success' ? 'admin-msg--ok' : 'admin-msg--err'}`}>
                   {couponMsg.text}
                 </div>
               )}
 
-              <div className="pt-3 border-t border-[var(--glass-border)]">
-                <div className="text-xs font-semibold text-[var(--text-primary)] mb-2">Active coupons</div>
-                {couponsList.filter((c) => c.active !== false).length === 0 ? (
+              <div className="admin-section-divider">
+                <div className="admin-section-label">
+                  <span>Active coupons</span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">{activeCoupons.length}</span>
+                </div>
+
+                {activeCoupons.length === 0 ? (
                   <p className="text-xs text-[var(--text-muted)]">No active coupons.</p>
                 ) : (
-                  <ul className="divide-y divide-[var(--glass-border)] max-h-56 overflow-y-auto">
-                    {couponsList.filter((c) => c.active !== false).map((c) => (
-                      <li key={c._id || c.id || c.code} className="py-2.5 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-xs font-mono font-medium text-[var(--text-primary)] truncate">{c.code}</div>
-                          <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                            {c.percentOff != null && c.percentOff !== ''
-                              ? `${c.percentOff}% off`
-                              : `$${((c.fixedCreditCents != null ? c.fixedCreditCents : Math.round(Number(c.fixedCreditUsd || 0) * 100)) / 100).toFixed(2)} credit`}
-                            {c.maxRedemptions ? ` · max ${c.maxRedemptions}` : ''}
-                            {c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
+                  <>
+                    <div className="admin-mobile-only admin-scroll">
+                      {activeCoupons.map((c) => (
+                        <div key={c._id || c.id || c.code} className="admin-stack-item !px-0">
+                          <div className="admin-stack-row">
+                            <div className="min-w-0">
+                              <div className="text-xs font-mono font-medium text-[var(--text-primary)] truncate">{c.code}</div>
+                              <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                                {c.percentOff != null && c.percentOff !== ''
+                                  ? `${c.percentOff}% off`
+                                  : `$${((c.fixedCreditCents != null ? c.fixedCreditCents : Math.round(Number(c.fixedCreditUsd || 0) * 100)) / 100).toFixed(2)} credit`}
+                                {c.maxRedemptions ? ` · max ${c.maxRedemptions}` : ''}
+                                {c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
+                              </div>
+                            </div>
+                            <AppButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={couponBusy}
+                              onClick={() => handleDisableCoupon(c._id || c.id)}
+                              className="shrink-0"
+                            >
+                              Disable
+                            </AppButton>
                           </div>
                         </div>
-                        <AppButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={couponBusy}
-                          onClick={() => handleDisableCoupon(c._id || c.id)}
-                          className="shrink-0"
-                        >
-                          Disable
-                        </AppButton>
-                      </li>
-                    ))}
-                  </ul>
+                      ))}
+                    </div>
+
+                    <div className="admin-desktop-only admin-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Code</th>
+                            <th>Value</th>
+                            <th>Limits</th>
+                            <th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeCoupons.map((c) => (
+                            <tr key={c._id || c.id || c.code}>
+                              <td className="font-mono text-xs">{c.code}</td>
+                              <td className="text-xs text-[var(--text-secondary)]">
+                                {c.percentOff != null && c.percentOff !== ''
+                                  ? `${c.percentOff}% off`
+                                  : `$${((c.fixedCreditCents != null ? c.fixedCreditCents : Math.round(Number(c.fixedCreditUsd || 0) * 100)) / 100).toFixed(2)}`}
+                              </td>
+                              <td className="text-[10px] text-[var(--text-muted)]">
+                                {c.maxRedemptions ? `max ${c.maxRedemptions}` : 'unlimited'}
+                                {c.expiresAt ? ` · ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
+                              </td>
+                              <td>
+                                <AppButton
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={couponBusy}
+                                  onClick={() => handleDisableCoupon(c._id || c.id)}
+                                >
+                                  Disable
+                                </AppButton>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Grant credits */}
-          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <Gift size={14} className="text-[var(--text-secondary)]" />
+          <div className="admin-panel">
+            <div className="admin-panel-header">
+              <h2 className="admin-panel-title">
+                <Gift size={14} />
                 Grant credits
               </h2>
             </div>
-            <div className="p-5 flex flex-col flex-1 gap-4">
-              <form onSubmit={handleGrantCredits} className="flex flex-col gap-3">
+            <div className="admin-panel-body">
+              <form onSubmit={handleGrantCredits} className="admin-form">
                 <div>
                   <label htmlFor="grant-email" className="form-label text-xs">User email</label>
                   <input
@@ -1027,7 +1054,7 @@ export default function Admin({ defaultTab = 'overview' }) {
                     className="form-input text-xs w-full"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
+                <label className="admin-check-row">
                   <input
                     type="checkbox"
                     checked={grantForm.allUsers}
@@ -1042,27 +1069,22 @@ export default function Admin({ defaultTab = 'overview' }) {
               </form>
 
               {grantMsg && (
-                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
-                  grantMsg.type === 'success'
-                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
-                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
-                }`}>
+                <div className={`admin-msg mt-3 ${grantMsg.type === 'success' ? 'admin-msg--ok' : 'admin-msg--err'}`}>
                   {grantMsg.text}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Bulk email */}
-          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden md:col-span-2 lg:col-span-1">
-            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <Mail size={14} className="text-[var(--text-secondary)]" />
+          <div className="admin-panel">
+            <div className="admin-panel-header">
+              <h2 className="admin-panel-title">
+                <Mail size={14} />
                 Bulk email
               </h2>
             </div>
-            <div className="p-5 flex flex-col flex-1 gap-4">
-              <form onSubmit={handleBulkEmail} className="flex flex-col gap-3 flex-1">
+            <div className="admin-panel-body">
+              <form onSubmit={handleBulkEmail} className="admin-form flex-1">
                 <div>
                   <label htmlFor="bulk-subject" className="form-label text-xs">Subject</label>
                   <input
@@ -1091,31 +1113,27 @@ export default function Admin({ defaultTab = 'overview' }) {
               </form>
 
               {bulkMsg && (
-                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
-                  bulkMsg.type === 'success'
-                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
-                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
-                }`}>
+                <div className={`admin-msg mt-3 ${bulkMsg.type === 'success' ? 'admin-msg--ok' : 'admin-msg--err'}`}>
                   {bulkMsg.text}
                 </div>
               )}
             </div>
           </div>
 
-          {/* User Management */}
-          <div className="flex flex-col bg-[var(--bg-surface)] border border-[var(--glass-border)] rounded-[var(--radius-lg)] overflow-hidden md:col-span-2 lg:col-span-3">
-            <div className="px-5 py-4 border-b border-[var(--glass-border)] bg-[var(--bg-raised)]">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                <UserPlus size={14} className="text-[var(--text-secondary)]" />
+          <div className="admin-panel admin-ops-span-full">
+            <div className="admin-panel-header">
+              <h2 className="admin-panel-title">
+                <UserPlus size={14} />
                 User Management
               </h2>
+              <span className="text-[10px] text-[var(--text-muted)] font-mono">{usersList.length} total</span>
             </div>
-            <div className="p-5 flex flex-col gap-4">
-              <p className="text-sm text-[var(--text-secondary)]">
+            <div className="admin-panel-body">
+              <p className="text-sm text-[var(--text-secondary)] mb-1">
                 Promote a registered user to an Administrator account to grant them dashboard access.
               </p>
 
-              <form onSubmit={(e) => handlePromote(e)} className="flex flex-col gap-3">
+              <form onSubmit={(e) => handlePromote(e)} className="admin-form">
                 <div>
                   <label htmlFor="promote-email" className="form-label text-xs">User email address</label>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -1136,67 +1154,107 @@ export default function Admin({ defaultTab = 'overview' }) {
               </form>
 
               {promoteMessage && (
-                <div className={`text-xs p-2.5 rounded-[var(--radius-md)] border ${
-                  promoteMessage.type === 'success'
-                    ? 'bg-[color-mix(in_srgb,var(--accent-green)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-green)_26%,transparent)] text-[var(--accent-green)]'
-                    : 'bg-[color-mix(in_srgb,var(--accent-red)_12%,transparent)] border-[color-mix(in_srgb,var(--accent-red)_26%,transparent)] text-[var(--accent-red)]'
-                }`}>
+                <div className={`admin-msg mt-3 ${promoteMessage.type === 'success' ? 'admin-msg--ok' : 'admin-msg--err'}`}>
                   {promoteMessage.text}
                 </div>
               )}
 
               {usersList.length > 0 && (
-                <div className="pt-3 border-t border-[var(--glass-border)]">
-                  <div className="text-xs font-semibold text-[var(--text-primary)] mb-2 flex items-center justify-between">
+                <div className="admin-section-divider">
+                  <div className="admin-section-label">
                     <span>Registered Users</span>
-                    <span className="text-[10px] text-[var(--text-muted)] font-mono">{usersList.length} total</span>
                   </div>
-                  <div className="max-h-64 overflow-y-auto divide-y divide-[var(--glass-border)]">
+
+                  <div className="admin-mobile-only admin-scroll">
                     {usersList.map((u) => (
-                      <div key={u._id} className="py-2.5 flex items-center justify-between text-xs gap-2">
-                        <div className="truncate flex-1 min-w-0">
-                          <div className="font-medium text-[var(--text-primary)] truncate">{u.name || 'User'}</div>
-                          <div className="text-[10px] text-[var(--text-muted)] truncate">{u.email}</div>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium border uppercase ${
-                            u.role === 'admin'
-                              ? 'bg-[color-mix(in_srgb,var(--brand-primary)_12%,transparent)] text-[var(--brand-light)] border-[color-mix(in_srgb,var(--brand-primary)_26%,transparent)]'
-                              : 'bg-[var(--bg-overlay)] text-[var(--text-muted)] border-[var(--glass-border)]'
-                          }`}>
-                            {u.role}
-                          </span>
-                          {u.role !== 'admin' ? (
-                            <button
-                              type="button"
-                              onClick={() => handlePromote(null, u.email)}
-                              disabled={promoting}
-                              className="text-[10px] text-[var(--brand-light)] hover:underline font-medium"
-                            >
-                              Make Admin
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleDemote(u.email)}
-                              disabled={promoting}
-                              className="text-[10px] text-[var(--text-muted)] hover:text-[var(--accent-red)] hover:underline"
-                            >
-                              Revoke
-                            </button>
-                          )}
+                      <div key={u._id} className="admin-stack-item !px-0">
+                        <div className="admin-stack-row">
+                          <div className="min-w-0">
+                            <div className="font-medium text-xs text-[var(--text-primary)] truncate">{u.name || 'User'}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] truncate">{u.email}</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={u.role === 'admin' ? 'admin-chip admin-chip--brand' : 'admin-chip admin-chip--muted'}>
+                              {u.role}
+                            </span>
+                            {u.role !== 'admin' ? (
+                              <button
+                                type="button"
+                                onClick={() => handlePromote(null, u.email)}
+                                disabled={promoting}
+                                className="admin-inline-action"
+                              >
+                                Make Admin
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleDemote(u.email)}
+                                disabled={promoting}
+                                className="admin-inline-action admin-inline-action--danger"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="admin-desktop-only admin-table-wrap admin-scroll">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Role</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usersList.map((u) => (
+                          <tr key={u._id}>
+                            <td>
+                              <div className="text-xs text-[var(--text-primary)]">{u.name || 'User'}</div>
+                              <div className="text-[10px] text-[var(--text-muted)]">{u.email}</div>
+                            </td>
+                            <td>
+                              <span className={u.role === 'admin' ? 'admin-chip admin-chip--brand' : 'admin-chip admin-chip--muted'}>
+                                {u.role}
+                              </span>
+                            </td>
+                            <td>
+                              {u.role !== 'admin' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handlePromote(null, u.email)}
+                                  disabled={promoting}
+                                  className="admin-inline-action"
+                                >
+                                  Make Admin
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDemote(u.email)}
+                                  disabled={promoting}
+                                  className="admin-inline-action admin-inline-action--danger"
+                                >
+                                  Revoke
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
             </div>
           </div>
-
         </div>
       )}
-
     </AppPage>
   );
 }
