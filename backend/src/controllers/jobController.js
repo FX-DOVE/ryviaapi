@@ -197,6 +197,31 @@ export async function getJobDetail(req, res, next) {
       }
     } catch {}
 
+    // Disk files are stored as safeName_reference.jpg while DB keys use display
+    // names ("John Doe"). Merge sanitized auto-discover entries onto plan keys
+    // so the FE lookup by char.name / env.locationId sees hasReferenceImage.
+    const safeKey = (value) => String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const mergeDiskOntoPlanKey = (locks, planKey) => {
+      if (!planKey) return;
+      const existing = locks[planKey];
+      if (existing?.referenceImagePath && fs.existsSync(existing.referenceImagePath)) return;
+      const sk = safeKey(planKey);
+      const diskHit = locks[sk];
+      if (diskHit?.referenceImagePath && fs.existsSync(diskHit.referenceImagePath)) {
+        locks[planKey] = {
+          ...(typeof existing === 'object' && existing ? existing : {}),
+          referenceImagePath: diskHit.referenceImagePath,
+        };
+      }
+    };
+    for (const char of jobObj.directorPlan?.characters || []) {
+      mergeDiskOntoPlanKey(jobObj.characterLocks, char?.name);
+    }
+    for (const env of jobObj.directorPlan?.environments || []) {
+      mergeDiskOntoPlanKey(jobObj.environmentLocks, env?.locationId || env?.name);
+      if (env?.name) mergeDiskOntoPlanKey(jobObj.environmentLocks, env.name);
+    }
+
     // Flag locks that have a readable reference image on disk for the FE.
     for (const [name, lock] of Object.entries(jobObj.characterLocks || {})) {
       const pathOnDisk = lock?.referenceImagePath;
@@ -762,7 +787,7 @@ export async function regenerateCharacterLock(req, res, next) {
       }
     }
 
-    const animationStyle = job.input?.style || job.styleGuide || 'cinematic';
+    const animationStyle = job.animationStyle || job.input?.style || job.styleGuide || 'cinematic';
     const worldDna = job.visualDna || null;
     const lock = await createCharacterLock(character, animationStyle, String(job._id), worldDna);
 
@@ -818,7 +843,7 @@ export async function regenerateEnvironmentLock(req, res, next) {
       }
     }
 
-    const animationStyle = job.input?.style || job.styleGuide || 'cinematic';
+    const animationStyle = job.animationStyle || job.input?.style || job.styleGuide || 'cinematic';
     const worldDna = job.visualDna || null;
     const lock = await createEnvironmentLock(environment, animationStyle, String(job._id), worldDna);
 

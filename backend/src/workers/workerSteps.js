@@ -30,7 +30,7 @@ import { JOB_STATUS, SCENE_STATUS, SEGMENT_STATUS, outputDir, tempDir, sceneVidD
 import { logInfo, logWarn, logError } from '../services/logService.js';
 import { analyzeScript } from '../services/scriptAnalyzer.js';
 import { decomposeScript, planGenerationStrategies, buildBeatPrompts } from '../services/cinematicDirectorEngine.js';
-import { createCharacterLock, createEnvironmentLock, getActWardrobe, buildCharacterLockPrompt } from '../services/consistencyLockService.js';
+import { createCharacterLock, createEnvironmentLock, getActWardrobe, buildCharacterLockPrompt, buildEnvironmentLockPrompt } from '../services/consistencyLockService.js';
 import { generateSceneSegments, pregenerateAllSceneKeyframes } from '../services/segmentGenerator.js';
 import { seedContinuityFromDirectorPlan, extractContinuityPrompt } from '../services/continuityService.js';
 import { getDirectorBible } from '../services/styleService.js';
@@ -460,6 +460,12 @@ export async function processLockStep(jobId) {
       };
     } catch (err) {
       console.error(`[WorkerSteps] Environment lock failed for "${env.name}": ${err.message}`);
+      // Fallback: text-only lock (mirrors character path). Null image must NOT
+      // count as complete for resume — executionEngine checks referenceImagePath on disk.
+      environmentLocks[envKey] = {
+        lockPrompt: buildEnvironmentLockPrompt(env, animationStyle),
+        referenceImagePath: null,
+      };
     }
   }
 
@@ -499,12 +505,39 @@ export async function processLockStep(jobId) {
     }
   }
 
-  // Save locks to job
+  // Save locks to job (including any text-only stubs) so resume can see partial progress
   await Job.findByIdAndUpdate(jobId, {
     characterLocks,
     environmentLocks,
     wardrobeByAct,
   });
+
+  const missingCharImages = characters.filter((c) => {
+    const lock = characterLocks[c.name];
+    return !(lock?.referenceImagePath && fs.existsSync(lock.referenceImagePath));
+  }).map((c) => c.name);
+  const missingEnvImages = environments.filter((e) => {
+    const key = e.locationId || e.name;
+    const lock = environmentLocks[key];
+    return !(lock?.referenceImagePath && fs.existsSync(lock.referenceImagePath));
+  }).map((e) => e.locationId || e.name);
+
+  if (missingCharImages.length || missingEnvImages.length) {
+    const errMsg = (
+      `Locking incomplete — refusing to advance without reference images. `
+      + (missingCharImages.length ? `Characters missing images: ${missingCharImages.join(', ')}. ` : '')
+      + (missingEnvImages.length ? `Environments missing images: ${missingEnvImages.join(', ')}. ` : '')
+      + 'Resume the job to retry locking (valid locks on disk are reused).'
+    );
+    await logError(jobId, errMsg);
+    await Job.findByIdAndUpdate(jobId, {
+      status: JOB_STATUS.FAILED,
+      error: errMsg,
+      progress: 25,
+    });
+    emitJobEvent(jobId, 'job_failed', { error: errMsg });
+    throw new Error(errMsg);
+  }
 
   await logInfo(jobId, `✅ Locked: ${Object.keys(characterLocks).length} characters, ${Object.keys(environmentLocks).length} environments`);
   emitJobEvent(jobId, 'job_progress', { status: JOB_STATUS.LOCKING, progress: 35 });
@@ -818,6 +851,16 @@ export async function processRenderingStep(jobId) {
     });
   }
 
+  if (!localScenes.length) {
+    const errMsg = (
+      'Rendering aborted: completed scenes exist in DB but none could be localized '
+      + '(cloud download / missing local files). Refusing to assemble an empty film.'
+    );
+    await logError(jobId, errMsg);
+    await Job.findByIdAndUpdate(jobId, { status: JOB_STATUS.FAILED, error: errMsg });
+    throw new Error(errMsg);
+  }
+
   // Assemble final video — preserve LTX native audio; apply spine mix if present
   const genreKey = job.genre || job.animationStyle || '';
   const mixPath = job.audioMix?.mixPath || null;
@@ -835,8 +878,11 @@ export async function processRenderingStep(jobId) {
     genre: genreKey,
   });
 
-  // Generate thumbnail
-  const localThumbnailPath = path.join(jobTempDir, 'thumbnail.jpg');
+  // Write thumbnail next to final.mp4 under outputs/ so deleteTempFiles cannot
+  // wipe the only local copy (streamThumbnail falls back to outputs/<id>/thumbnail.jpg).
+  const outDir = outputDir(jobId);
+  fs.mkdirSync(outDir, { recursive: true });
+  const localThumbnailPath = path.join(outDir, 'thumbnail.jpg');
   await generateThumbnailFromVideo(finalVideoPath, localThumbnailPath);
 
   await Job.findByIdAndUpdate(jobId, {
