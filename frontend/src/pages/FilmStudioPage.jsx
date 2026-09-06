@@ -1492,6 +1492,31 @@ export default function FilmStudioPage() {
         <StepIndicator step={step} current={step} />
       </div>
 
+      <div className="studio-shell">
+        <aside className="studio-outline" aria-label="Production outline">
+          <div className="studio-outline-card">
+            <h3>Pipeline</h3>
+            <div className="studio-outline-list">
+              {['Film Concept', 'Approve Cast', 'Generate', 'Review'].map((label, i) => {
+                const n = i + 1;
+                const cls = n === step ? 'active' : n < step ? 'done' : '';
+                return (
+                  <div key={label} className={`studio-outline-item ${cls}`}>
+                    <span className="film-step-num" style={{ width: 24, height: 24, fontSize: 11 }}>{n < step ? '✓' : n}</span>
+                    <span>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
+
+        <div className="studio-canvas">
+          <div className="studio-canvas-frame" aria-hidden="true">
+            <span style={{ position: 'relative', zIndex: 1, fontSize: 13, fontWeight: 600 }}>
+              16:9 canvas · {concept.aspectRatio || '16:9'} · Step {step}/4
+            </span>
+          </div>
       <div className="film-studio-body">
         {error && (
           <div className="film-error-banner">
@@ -2127,6 +2152,39 @@ export default function FilmStudioPage() {
             </div>
           </div>
         )}
+      </div>
+        </div>
+
+        <aside className="studio-inspector" aria-label="Inspector">
+          <div className="studio-inspector-card">
+            <h3>Inspector</h3>
+            <div className="space-y-3 text-sm text-[var(--text-secondary)]">
+              <div>
+                <div className="section-label mb-1">Project</div>
+                <div className="text-[var(--text-primary)] font-semibold truncate">{activeProject?.name || concept.title || 'Untitled film'}</div>
+              </div>
+              <div>
+                <div className="section-label mb-1">Video type</div>
+                <div className="text-[var(--text-primary)]">{selectedStyle?.label || concept.videoType}</div>
+              </div>
+              <div>
+                <div className="section-label mb-1">Aspect</div>
+                <div className="text-[var(--text-primary)]">{concept.aspectRatio}</div>
+              </div>
+              <div>
+                <div className="section-label mb-1">Cast</div>
+                <div className="text-[var(--text-primary)]">{characters.length} characters</div>
+              </div>
+              <div>
+                <div className="section-label mb-1">Est. scenes</div>
+                <div className="text-[var(--text-primary)]">~{estimatedScenes}</div>
+              </div>
+              <p className="caption" style={{ marginTop: 8 }}>
+                Sticky primary actions stay at the bottom of each step. Pipeline, locks, and render flows are unchanged.
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
 
       {/* Character Editor Modal */}

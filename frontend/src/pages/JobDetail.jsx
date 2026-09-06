@@ -464,21 +464,34 @@ export default function JobDetail() {
           )}
 
           {['queued', 'preparing', 'analyzing', 'directing', 'locking', 'scene_generation', 'media_generation', 'assembling', 'optimizing'].includes(job.status) && (
-            <AppButton variant="secondary" onClick={handleStop} icon={Pause}>
-              Halt Pipeline
-            </AppButton>
+            <div className="flex flex-col items-stretch sm:items-end gap-1">
+              <AppButton variant="secondary" onClick={handleStop} icon={Pause}>
+                Cancel / Halt
+              </AppButton>
+              <span className="job-action-hint">Stops workers safely. You can resume from the last checkpoint.</span>
+            </div>
           )}
 
           {isStoppedOrCancelled && (
-            <AppButton variant="primary" onClick={handleResume} icon={Play}>
-              Resume Generation
-            </AppButton>
+            <div className="flex flex-col items-stretch sm:items-end gap-1">
+              <AppButton variant="primary" onClick={handleResume} icon={Play}>
+                Resume Generation
+              </AppButton>
+              <span className="job-action-hint">Continues from saved director plan and completed scenes.</span>
+            </div>
           )}
 
           {isFailed && (
-            <AppButton variant="secondary" onClick={handleRetry} disabled={job.retryCount >= 3} icon={RefreshCw}>
-              Retry Job {job.retryCount > 0 && `(${job.retryCount}/3)`}
-            </AppButton>
+            <div className="flex flex-col items-stretch sm:items-end gap-1">
+              <AppButton variant="secondary" onClick={handleRetry} disabled={job.retryCount >= 3} icon={RefreshCw}>
+                Retry Job {job.retryCount > 0 && `(${job.retryCount}/3)`}
+              </AppButton>
+              <span className="job-action-hint">
+                {job.retryCount >= 3
+                  ? 'Retry limit reached. Open a scene to retry individually or start a new produce.'
+                  : (job.error ? `Last error: ${job.error}` : 'Re-queues the failed pipeline without changing billing math.')}
+              </span>
+            </div>
           )}
 
           <AppButton variant="ghost" className="text-[var(--accent-red)] hover:bg-[var(--accent-red)] hover:bg-opacity-10 px-3" onClick={handleDelete} icon={Trash2} />
@@ -531,10 +544,12 @@ export default function JobDetail() {
                     <ProgressRing progress={job.progress || 0} status={job.status} />
                     <div>
                       <div className="font-bold text-[var(--text-primary)]">
-                        {isFailed ? 'Pipeline Failed' : job.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {isFailed ? 'Render failed — retry available' : job.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </div>
                       <div className="caption mt-1">
-                        {isFailed ? job.error : `${job.completedScenes || 0} / ${activeScenes.length || job.totalScenes || '?'} scenes complete`}
+                        {isFailed
+                          ? (job.error || 'Something went wrong in the pipeline. Use Retry Job or retry a failed scene below.')
+                          : `${job.completedScenes || 0} / ${activeScenes.length || job.totalScenes || '?'} scenes complete · ${Math.round(job.progress || 0)}%`}
                       </div>
                     </div>
                   </div>

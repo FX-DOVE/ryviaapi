@@ -2,10 +2,10 @@ import { NavLink } from 'react-router-dom';
 import { Film, Video, History, Wallet } from 'lucide-react';
 
 const tabs = [
-  { to: '/app/film-studio', icon: Film, label: 'Studio' },
+  { to: '/app/film-studio', icon: Film, label: 'Film Studio' },
   { to: '/app/projects', icon: Video, label: 'Projects' },
   { to: '/app/history', icon: History, label: 'History' },
-  { to: '/app/billing', icon: Wallet, label: 'Wallet' },
+  { to: '/app/billing', icon: Wallet, label: 'Billing' },
 ];
 
 export default function BottomNav() {

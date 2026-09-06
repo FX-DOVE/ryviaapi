@@ -24,14 +24,14 @@ function formatDate(dateStr) {
 
 // Status metadata — colors reference CSS variables where possible
 const STATUS_META = {
-  queued:           { label: 'Queued',         color: 'var(--accent-gold)',    bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.3)',  dot: true  },
+  queued:           { label: 'Draft',         color: 'var(--accent-gold)',    bg: 'rgba(245,158,11,0.12)',  border: 'rgba(245,158,11,0.3)',  dot: true  },
   preparing:        { label: 'Preparing',       color: 'var(--accent-blue)',    bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.3)',  pulse: true },
   analyzing:        { label: 'Analyzing',       color: 'var(--brand-light)',    bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.3)', pulse: true },
   scene_generation: { label: 'Building Scenes', color: 'var(--brand-light)',    bg: 'rgba(168,85,247,0.12)',  border: 'rgba(168,85,247,0.3)',  pulse: true },
   media_generation: { label: 'Generating',      color: 'var(--brand-primary)',  bg: 'rgba(124,58,237,0.12)',  border: 'rgba(124,58,237,0.3)',  pulse: true },
   assembling:       { label: 'Assembling',      color: '#EC4899',               bg: 'rgba(236,72,153,0.12)',  border: 'rgba(236,72,153,0.3)',  pulse: true },
   optimizing:       { label: 'Optimizing',      color: 'var(--accent-green)',   bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.3)',  pulse: true },
-  completed:        { label: 'Completed',       color: 'var(--accent-green)',   bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.3)',  dot: true  },
+  completed:        { label: 'Complete',       color: 'var(--accent-green)',   bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.3)',  dot: true  },
   failed:           { label: 'Failed',          color: 'var(--accent-red)',     bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.3)',   dot: true  },
 };
 
