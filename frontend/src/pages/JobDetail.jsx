@@ -664,7 +664,9 @@ export default function JobDetail() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {characters.map((char, idx) => {
                       const lock = characterLocks[char.name] || characterLocks[char.name.toLowerCase()];
-                      const hasMasterImage = Boolean(lock?.hasReferenceImage || lock?.referenceImagePath);
+                      // Trust API hasReferenceImage (existsSync). Do not treat a stale
+                      // referenceImagePath string as proof the image is available.
+                      const hasMasterImage = lock?.hasReferenceImage === true;
                       const isRegen = regeneratingKey === `char:${char.name}`;
                       const isActiveRef = activeReference === `char:${char.name}`;
                       const imageUrl = getCharacterLockImageUrl(id, char.name);
@@ -706,14 +708,16 @@ export default function JobDetail() {
                                 </div>
                               )}
 
-                              <div className="text-[10px] text-[var(--accent-green)] flex items-center gap-1 mt-1 font-medium">
+                              <div className={`text-[10px] flex items-center gap-1 mt-1 font-medium ${hasMasterImage || lock?.lockPrompt ? 'text-[var(--accent-green)]' : 'text-[var(--text-muted)]'}`}>
                                 <ShieldCheck size={11} />
                                 <span>
                                   {lock?.referenceUsed
                                     ? '📸 Image-to-Image Lock (Visual Reference Preserved)'
                                     : hasMasterImage
                                     ? '🎨 Text-to-Image Lock (World DNA Synchronized)'
-                                    : 'Detailed Prompt Lock Active'}
+                                    : lock?.lockPrompt
+                                    ? 'Text lock only (no reference image yet)'
+                                    : 'Lock pending — waiting for locking step'}
                                 </span>
                               </div>
 
@@ -822,7 +826,7 @@ export default function JobDetail() {
                     {environments.map((env, idx) => {
                       const envLocks = job.environmentLocks || {};
                       const lock = envLocks[env.locationId] || envLocks[env.name] || envLocks[String(env.locationId || '').toLowerCase()];
-                      const hasMasterImage = Boolean(lock?.hasReferenceImage || lock?.referenceImagePath);
+                      const hasMasterImage = lock?.hasReferenceImage === true;
                       const locKey = env.locationId || env.name;
                       const isRegen = regeneratingKey === `env:${locKey}`;
                       const imageUrl = getEnvironmentLockImageUrl(id, locKey);

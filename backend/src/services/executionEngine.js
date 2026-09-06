@@ -1,6 +1,11 @@
+import fs from 'fs';
 import Job from '../models/Job.js';
 import queueManager from '../queues/queueManager.js';
 import { FILM_PIPELINE_STEPS, SCREENPLAY_PIPELINE_STEPS } from '../config/constants.js';
+
+import { locksCompleteForPlan } from './lockCompleteness.js';
+
+export { locksCompleteForPlan } from './lockCompleteness.js';
 
 /**
  * Start a job's pipeline.
@@ -22,12 +27,18 @@ export async function startJobPipeline(jobId, steps = null) {
 
     const allScenesDone = scenes.length > 0 && scenes.every(s => s.status === 'done' && Boolean(s.videoPath));
     const hasDirectorPlan = Boolean(job.directorPlan?.acts?.length);
-    const hasRealCharLock = Object.values(job.characterLocks || {}).some((v) => v && (v.referenceImagePath || (typeof v === 'string' && v)));
-    const hasRealEnvLock = Object.values(job.environmentLocks || {}).some((v) => v && (v.referenceImagePath || (typeof v === 'string' && v)));
-    const hasLocks = hasRealCharLock || hasRealEnvLock;
+    // Prior bug: empty lock stubs / partial locks counted as done via .some().
+    // Require every plan entity to have a real on-disk reference image.
+    const hasLocks = locksCompleteForPlan(job);
 
-    if (job.finalVideoUrl || (job.finalVideoPath && typeof job.finalVideoPath === 'string')) {
-      // Final video already rendered! Resume directly at upload/notification
+    const finalOnDisk = Boolean(
+      job.finalVideoPath
+      && typeof job.finalVideoPath === 'string'
+      && !/^https?:\/\//i.test(job.finalVideoPath)
+      && fs.existsSync(job.finalVideoPath),
+    );
+    if (job.finalVideoUrl || finalOnDisk) {
+      // Cloud URL recorded or local final.mp4 still on disk — resume at upload/notification
       plan = ['upload', 'notify'];
     } else if (allScenesDone) {
       // Scenes ready — build underscore mix then assemble
@@ -156,4 +167,4 @@ export async function triggerNextStep(jobId, currentStepId = null) {
   }
 }
 
-export default { triggerNextStep, startJobPipeline };
+export default { triggerNextStep, startJobPipeline, locksCompleteForPlan };
